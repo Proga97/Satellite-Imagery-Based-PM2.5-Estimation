@@ -1,0 +1,43 @@
+# Single source of truth for pipeline knobs. Paths are relative to repo root.
+region: california
+years: [2023, 2024]
+
+labels:
+  parameter_code: 88101          # PM2.5 FRM/FEM mass
+  min_observation_percent: 75    # EPA daily completeness field
+  min_days_per_week: 5           # ISO-week aggregation rule
+  min_week_coverage: 0.70        # station kept if >= this fraction of weeks valid
+
+patches:
+  product: l2a                   # l2a | l1c (config switch, same code path)
+  collections:
+    l2a: COPERNICUS/S2_SR_HARMONIZED
+    l1c: COPERNICUS/S2_HARMONIZED
+  cloudscore_collection: GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED
+  size_px: 224
+  scale_m: 10
+  bands: [B4, B3, B2]
+  scl_drop: [0, 1, 3, 8, 9, 10, 11]   # keep 2,4,5,6,7
+  cs_cdf_min: 0.6                # cloudscore+ threshold (l1c only)
+  min_valid_fraction: 0.6
+  workers: 24
+  max_retries: 5
+
+embeddings:
+  backbone: resnet18
+  rgb_gain: 3.0                  # visual gain before ImageNet normalize; freeze after eyeball
+  batch_size: 256
+
+paths:
+  raw_epa: data/raw/epa
+  stations: data/interim/stations.parquet
+  labels_weekly: data/interim/labels_weekly.parquet
+  patches_dir: data/patches
+  manifest: data/patches/manifest.parquet
+  embeddings: data/processed/embeddings.parquet
+  model_table: data/processed/model_table.parquet
+  runs_dir: data/runs
+
+gee:
+  # GCP project for ee.Initialize; can be overridden by env var EE_PROJECT
+  project: null

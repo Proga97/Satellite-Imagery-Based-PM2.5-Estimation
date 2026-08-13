@@ -1,0 +1,16 @@
+# Core pinned loosely; install into conda env `thesis0` (python 3.10)
+earthengine-api>=1.6
+torch>=2.0
+torchvision>=0.15
+numpy
+pandas
+pyarrow
+scikit-learn
+lightgbm
+matplotlib
+PyYAML
+pyproj
+shapely
+requests
+tqdm
+pytest

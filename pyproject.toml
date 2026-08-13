@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thesis"
+version = "0.1.0"
+description = "PM2.5 estimation from Sentinel-2 imagery (Purdue MS thesis)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: tests that hit external services (EPA, GEE)"]
+addopts = "-m 'not network'"

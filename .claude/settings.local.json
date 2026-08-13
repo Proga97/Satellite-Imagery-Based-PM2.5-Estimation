@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import pypdf; print\\('pypdf ok'\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(/opt/anaconda3/envs/thesis0/bin/python -c ' *)",
+      "Bash(timeout 90 /opt/anaconda3/envs/thesis0/bin/python -c ' *)",
+      "Bash(git init *)",
+      "Bash(/opt/anaconda3/envs/thesis0/bin/pip install *)",
+      "Bash(/opt/anaconda3/envs/thesis0/bin/python -m pytest -q)",
+      "Bash(/opt/anaconda3/envs/thesis0/bin/python scripts/01_build_labels.py)"
+    ]
+  }
+}

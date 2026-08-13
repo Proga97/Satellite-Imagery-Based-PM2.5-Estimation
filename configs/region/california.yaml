@@ -1,0 +1,6 @@
+name: california
+epa_state_code: "06"     # EPA AQS state code is the authoritative CA membership test
+# UTM zone by longitude: zone 10 west of -120, zone 11 east of it
+utm_zone_split_lon: -120.0
+utm_epsg_west: 32610
+utm_epsg_east: 32611
