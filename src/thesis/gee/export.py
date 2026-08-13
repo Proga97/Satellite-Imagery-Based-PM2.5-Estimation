@@ -69,6 +69,10 @@ def _download_one(job: PatchJob, cfg_patches: dict, patches_dir: Path) -> PatchR
                                valid_fraction, n_images)
         except Exception as exc:
             last_err = str(exc)
+            # median() of an empty collection has no bands -> unmask fails:
+            # that is just a week with zero images, not a real error
+            if "has no bands" in last_err:
+                return PatchResult(job.station_id, job.week_start, product, "no_images")
             if any(k in last_err.lower() for k in RETRYABLE):
                 time.sleep(min(60.0, (2 ** attempt) + random.random()))
                 continue
