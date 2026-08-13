@@ -40,4 +40,4 @@ paths:
 
 gee:
   # GCP project for ee.Initialize; can be overridden by env var EE_PROJECT
-  project: null
+  project: pm25-prediction-505417
