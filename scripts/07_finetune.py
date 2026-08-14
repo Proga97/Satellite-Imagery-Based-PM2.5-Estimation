@@ -159,6 +159,16 @@ def main() -> int:
     all_rows = []
     for split_name in args.splits:
         for fold, (tr_idx, te_idx) in enumerate(iter_splits(table, split_name, args.seed)):
+            preds_path = run_dir / f"preds_{split_name}_f{fold}.parquet"
+            if preds_path.exists():
+                prev = pd.read_parquet(preds_path)
+                m = compute_metrics(prev["y_true"].to_numpy(), prev["y_pred"].to_numpy(),
+                                    prev["station_id"].to_numpy())
+                m.update(split=split_name, fold=fold, n_test=len(prev))
+                all_rows.append(m)
+                print(f"[{split_name} fold {fold}] resumed from existing preds "
+                      f"(r2={m['r2']:.3f})")
+                continue
             tr = table.iloc[tr_idx]
             te = table.iloc[te_idx]
             # station-aware val carve-out from train (for early stopping)
@@ -168,10 +178,12 @@ def main() -> int:
             tr2 = tr[~tr["station_id"].isin(val_stations)]
             print(f"[{split_name} fold {fold}] train {len(tr2)} val {len(va)} test {len(te)}")
 
+            # num_workers=0: macOS/MPS DataLoader workers deadlock across
+            # repeated fold loops; in-process loading is stable and nearly
+            # as fast here (decode is cheap relative to the forward pass)
             dl = lambda rows, train: DataLoader(
                 PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train),
-                batch_size=args.batch_size, shuffle=train, num_workers=4,
-                persistent_workers=False)
+                batch_size=args.batch_size, shuffle=train, num_workers=0)
             model = make_model().to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
                               args.epochs, args.lr)
