@@ -1,12 +1,14 @@
 # Single source of truth for pipeline knobs. Paths are relative to repo root.
 region: california
-years: [2023, 2024]
+# 2020 included for wildfire-season high-PM samples (visible-haze range)
+years: [2020, 2023, 2024]
 
 labels:
   parameter_code: 88101          # PM2.5 FRM/FEM mass
   min_observation_percent: 75    # EPA daily completeness field
   min_days_per_week: 5           # ISO-week aggregation rule
   min_week_coverage: 0.70        # station kept if >= this fraction of weeks valid
+  coverage_years: [2023, 2024]   # coverage judged on these years only (2020 is bonus data)
 
 patches:
   product: l2a                   # l2a | l1c (config switch, same code path)

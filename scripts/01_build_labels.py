@@ -36,7 +36,11 @@ def main() -> int:
         min_days_per_week=cfg.labels["min_days_per_week"],
     )
     if not args.no_coverage_filter:
-        weekly = epa.filter_station_coverage(weekly, cfg.years, cfg.labels["min_week_coverage"])
+        cov_years = cfg.labels.get("coverage_years", cfg.years)
+        cov = weekly[weekly["week_start"].dt.year.isin(cov_years)] \
+            if hasattr(weekly["week_start"], "dt") else weekly
+        kept = epa.filter_station_coverage(cov, cov_years, cfg.labels["min_week_coverage"])
+        weekly = weekly[weekly["station_id"].isin(kept["station_id"].unique())].reset_index(drop=True)
     stations = stations[stations["station_id"].isin(weekly["station_id"].unique())].reset_index(drop=True)
 
     stations.to_parquet(cfg.path("stations"), index=False)

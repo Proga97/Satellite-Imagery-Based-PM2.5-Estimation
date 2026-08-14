@@ -13,11 +13,13 @@ from thesis.features.embeddings import extract_embeddings
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
+    parser.add_argument("--mode", choices=["median", "single"], default="median")
     args = parser.parse_args()
 
     cfg = load_config()
     product = args.product or cfg.patches["product"]
-    root = cfg.path("patches_dir") / product / "weekly"
+    subdir = "weekly" if args.mode == "median" else "single"
+    root = cfg.path("patches_dir") / product / subdir
 
     patch_files = []
     for npy in sorted(root.glob("*/*.npy")):
@@ -28,7 +30,8 @@ def main() -> int:
     print(f"{len(patch_files)} patches -> embeddings (gain={cfg.embeddings['rgb_gain']})")
 
     df = extract_embeddings(patch_files, cfg.embeddings["rgb_gain"], cfg.embeddings["batch_size"])
-    out = cfg.path("embeddings").with_name(f"embeddings_{product}.parquet")
+    mode_sfx = "_single" if args.mode == "single" else ""
+    out = cfg.path("embeddings").with_name(f"embeddings_{product}{mode_sfx}.parquet")
     df.to_parquet(out, index=False)
     print(f"wrote {out} ({len(df)} rows, {df.shape[1] - 2} dims)")
     return 0

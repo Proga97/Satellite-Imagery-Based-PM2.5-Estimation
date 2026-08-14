@@ -100,10 +100,14 @@ def aggregate_weekly(
 
 
 def filter_station_coverage(weekly: pd.DataFrame, years: list[int], min_coverage: float) -> pd.DataFrame:
-    """Keep stations covering >= min_coverage of all ISO weeks in the period."""
-    start = pd.Timestamp(f"{min(years)}-01-01")
-    end = pd.Timestamp(f"{max(years)}-12-31")
-    total_weeks = len(pd.date_range(start, end, freq="W-MON"))
+    """Keep stations covering >= min_coverage of all ISO weeks in the listed years.
+
+    Years may be non-contiguous (e.g. [2020, 2023, 2024]); only weeks belonging
+    to listed years count toward the denominator.
+    """
+    total_weeks = sum(
+        len(pd.date_range(f"{y}-01-01", f"{y}-12-31", freq="W-MON")) for y in years
+    )
     counts = weekly.groupby("station_id")["week_start"].nunique()
     keep = counts[counts >= min_coverage * total_weeks].index
     return weekly[weekly["station_id"].isin(keep)].reset_index(drop=True)

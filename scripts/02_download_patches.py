@@ -58,11 +58,19 @@ def main() -> int:
                         help="subsample to N weeks per station-month (full run: 2)")
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None,
                         help="override configs/pipeline.yaml patches.product")
+    parser.add_argument("--mode", choices=["median", "single"], default=None,
+                        help="weekly median composite (default) or least-cloudy single scene")
+    parser.add_argument("--min-valid", type=float, default=None,
+                        help="override min_valid_fraction (single mode: use ~0.3 so smoke survives)")
     args = parser.parse_args()
 
     cfg = load_config()
     if args.product:
         cfg.patches["product"] = args.product
+    if args.mode:
+        cfg.patches["mode"] = args.mode
+    if args.min_valid is not None:
+        cfg.patches["min_valid_fraction"] = args.min_valid
     init_ee(cfg.ee_project)
 
     jobs = select_jobs(cfg, args.limit_stations, args.limit_weeks, args.weeks_per_month)

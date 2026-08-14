@@ -26,7 +26,7 @@ def main() -> int:
     parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     parser.add_argument("--test-year", type=int, default=2024)
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
-    parser.add_argument("--labels", choices=["weekly", "overpass"], default="weekly")
+    parser.add_argument("--labels", choices=["weekly", "overpass", "scene"], default="weekly")
     args = parser.parse_args()
 
     cfg = load_config()

@@ -16,14 +16,30 @@ from thesis.dataset.assemble import assemble
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
-    parser.add_argument("--labels", choices=["weekly", "overpass"], default="weekly")
+    parser.add_argument("--labels", choices=["weekly", "overpass", "scene"], default="weekly")
     args = parser.parse_args()
 
     cfg = load_config()
     product = args.product or cfg.patches["product"]
-    labels = pd.read_parquet(cfg.path(f"labels_{args.labels}"))
-    embeddings = pd.read_parquet(
-        cfg.path("embeddings").with_name(f"embeddings_{product}.parquet"))
+    if args.labels == "scene":
+        # label = PM2.5 on the exact acquisition date of the single scene
+        manifest = pd.read_parquet(cfg.path("manifest"))
+        scenes = manifest[(manifest["product"] == product)
+                          & (manifest.get("mode", "median") == "single")
+                          & (manifest["status"] == "ok")
+                          & (manifest["scene_date"] != "")]
+        daily = pd.read_parquet(cfg.path("labels_daily"))
+        daily["date"] = pd.to_datetime(daily["date"])
+        scenes = scenes.assign(date=pd.to_datetime(scenes["scene_date"]))
+        labels = scenes.merge(daily, on=["station_id", "date"], how="inner")
+        labels = labels.assign(week_start=pd.to_datetime(labels["week_start"]))
+        labels = labels[["station_id", "week_start", "pm25"]]
+        print(f"scene labels: {len(scenes)} scenes, {len(labels)} with same-day EPA value")
+        emb_name = f"embeddings_{product}_single.parquet"
+    else:
+        labels = pd.read_parquet(cfg.path(f"labels_{args.labels}"))
+        emb_name = f"embeddings_{product}.parquet"
+    embeddings = pd.read_parquet(cfg.path("embeddings").with_name(emb_name))
     stations = pd.read_parquet(cfg.path("stations"))
 
     table, report = assemble(labels, embeddings, stations)
