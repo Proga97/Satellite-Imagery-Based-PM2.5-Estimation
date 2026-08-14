@@ -138,3 +138,74 @@ def build_overpass_labels(daily: pd.DataFrame, pass_dates: pd.DataFrame) -> pd.D
         .reset_index()
     )
     return out
+
+
+HOURLY_URL = "https://aqs.epa.gov/aqsweb/airdata/hourly_88101_{year}.zip"
+HOURLY_USECOLS = [
+    "State Code", "County Code", "Site Num", "POC",
+    "Date Local", "Time Local", "Sample Measurement",
+]
+
+
+def download_hourly_year(year: int, dest_dir: Path) -> Path:
+    dest = dest_dir / f"hourly_88101_{year}.zip"
+    if dest.exists():
+        return dest
+    resp = requests.get(HOURLY_URL.format(year=year), timeout=600)
+    resp.raise_for_status()
+    tmp = dest.with_suffix(".tmp")
+    tmp.write_bytes(resp.content)
+    tmp.rename(dest)
+    return dest
+
+
+def read_hourly_year(zip_path: Path, state_code: str) -> pd.DataFrame:
+    """Hourly FEM measurements -> station_id, ts_local (naive), pm25."""
+    with zipfile.ZipFile(zip_path) as zf:
+        name = zf.namelist()[0]
+        with zf.open(name) as f:
+            df = pd.read_csv(
+                io.TextIOWrapper(f, encoding="utf-8"),
+                usecols=HOURLY_USECOLS,
+                dtype={"State Code": str, "County Code": str, "Site Num": str},
+                low_memory=False,
+            )
+    df = df[df["State Code"] == state_code]
+    df["station_id"] = (
+        df["State Code"].str.zfill(2)
+        + "-" + df["County Code"].str.zfill(3)
+        + "-" + df["Site Num"].str.zfill(4)
+    )
+    df = df.sort_values("POC").drop_duplicates(
+        subset=["station_id", "Date Local", "Time Local"], keep="first")
+    df["ts_local"] = pd.to_datetime(df["Date Local"] + " " + df["Time Local"])
+    df["pm25"] = df["Sample Measurement"].clip(lower=0.0)
+    return df[["station_id", "ts_local", "pm25"]].dropna().reset_index(drop=True)
+
+
+def build_overpass_hour_labels(hourly: pd.DataFrame, pass_times: pd.DataFrame,
+                               window_hours: int = 1) -> pd.DataFrame:
+    """Label = mean hourly PM2.5 within +/-window_hours of the exact S2 overpass.
+
+    pass_times: station_id, ts_local (exact acquisition time, naive local)
+    Output keyed like other label tables: station_id, week_start, plus scene_date.
+    """
+    h = hourly.copy()
+    h["date"] = h["ts_local"].dt.normalize()
+    h["hour"] = h["ts_local"].dt.hour
+    p = pass_times.copy()
+    p["date"] = p["ts_local"].dt.normalize()
+    p["pass_hour"] = p["ts_local"].dt.hour
+    p = p.drop_duplicates(["station_id", "date"])
+
+    m = p[["station_id", "date", "pass_hour"]].merge(
+        h[["station_id", "date", "hour", "pm25"]], on=["station_id", "date"])
+    m = m[(m["hour"] >= m["pass_hour"] - window_hours)
+          & (m["hour"] <= m["pass_hour"] + window_hours)]
+    out = (
+        m.groupby(["station_id", "date"])
+        .agg(pm25=("pm25", "mean"), n_hours=("hour", "nunique"))
+        .reset_index()
+    )
+    out["week_start"] = out["date"] - pd.to_timedelta(out["date"].dt.dayofweek, unit="D")
+    return out.rename(columns={"date": "scene_date"})

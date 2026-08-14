@@ -37,6 +37,8 @@ paths:
   labels_daily: data/interim/labels_daily.parquet
   labels_overpass: data/interim/labels_overpass.parquet
   s2_pass_dates: data/interim/s2_pass_dates.parquet
+  s2_pass_times: data/interim/s2_pass_times.parquet
+  labels_scenehour: data/interim/labels_scenehour.parquet
   patches_dir: data/patches
   manifest: data/patches/manifest.parquet
   embeddings: data/processed/embeddings.parquet

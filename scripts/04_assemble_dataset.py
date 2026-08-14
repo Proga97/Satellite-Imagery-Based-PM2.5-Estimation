@@ -16,12 +16,29 @@ from thesis.dataset.assemble import assemble
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
-    parser.add_argument("--labels", choices=["weekly", "overpass", "scene"], default="weekly")
+    parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
+                        default="weekly")
     args = parser.parse_args()
 
     cfg = load_config()
     product = args.product or cfg.patches["product"]
-    if args.labels == "scene":
+    if args.labels == "scenehour":
+        # label = mean PM2.5 within +/-1h of the exact overpass timestamp
+        manifest = pd.read_parquet(cfg.path("manifest"))
+        scenes = manifest[(manifest["product"] == product)
+                          & (manifest.get("mode", "median") == "single")
+                          & (manifest["status"] == "ok")
+                          & (manifest["scene_date"] != "")]
+        hour_labels = pd.read_parquet(cfg.path("labels_scenehour"))
+        scenes = scenes.assign(scene_date=pd.to_datetime(scenes["scene_date"]),
+                               week_start=pd.to_datetime(scenes["week_start"]))
+        labels = scenes[["station_id", "week_start", "scene_date"]].merge(
+            hour_labels[["station_id", "scene_date", "pm25"]],
+            on=["station_id", "scene_date"], how="inner")
+        labels = labels[["station_id", "week_start", "pm25"]]
+        print(f"scenehour labels: {len(scenes)} scenes, {len(labels)} with overpass-hour value")
+        emb_name = f"embeddings_{product}_single.parquet"
+    elif args.labels == "scene":
         # label = PM2.5 on the exact acquisition date of the single scene
         manifest = pd.read_parquet(cfg.path("manifest"))
         scenes = manifest[(manifest["product"] == product)
