@@ -129,7 +129,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", default="finetune_l1c_scene")
     parser.add_argument("--product", choices=["l2a", "l1c"], default="l1c")
-    parser.add_argument("--labels", choices=["weekly", "overpass", "scene"], default="scene")
+    parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
+                        default="scene")
     parser.add_argument("--mode", choices=["median", "single"], default="single")
     parser.add_argument("--splits", nargs="+", default=["random", "spatial"])
     parser.add_argument("--epochs", type=int, default=12)
