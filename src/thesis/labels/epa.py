@@ -107,3 +107,27 @@ def filter_station_coverage(weekly: pd.DataFrame, years: list[int], min_coverage
     counts = weekly.groupby("station_id")["week_start"].nunique()
     keep = counts[counts >= min_coverage * total_weeks].index
     return weekly[weekly["station_id"].isin(keep)].reset_index(drop=True)
+
+
+def build_overpass_labels(daily: pd.DataFrame, pass_dates: pd.DataFrame) -> pd.DataFrame:
+    """Label each station-week by PM2.5 on the actual Sentinel-2 overpass day(s).
+
+    daily:      station_id, date, pm25 (local calendar dates)
+    pass_dates: station_id, date (local dates with an S2 acquisition)
+
+    The weekly-mean label mixes days the satellite never saw; here the label is
+    the mean over only the overpass days that have an EPA measurement.
+    """
+    d = daily.copy()
+    d["date"] = pd.to_datetime(d["date"]).dt.normalize()
+    p = pass_dates.drop_duplicates(["station_id", "date"]).copy()
+    p["date"] = pd.to_datetime(p["date"]).dt.normalize()
+
+    m = p.merge(d, on=["station_id", "date"], how="inner")
+    m["week_start"] = (m["date"] - pd.to_timedelta(m["date"].dt.dayofweek, unit="D"))
+    out = (
+        m.groupby(["station_id", "week_start"])
+        .agg(pm25=("pm25", "mean"), n_days=("date", "nunique"))
+        .reset_index()
+    )
+    return out

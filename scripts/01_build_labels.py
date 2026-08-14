@@ -42,6 +42,13 @@ def main() -> int:
     stations.to_parquet(cfg.path("stations"), index=False)
     weekly.to_parquet(cfg.path("labels_weekly"), index=False)
 
+    daily_out = daily[
+        (daily["obs_percent"] >= cfg.labels["min_observation_percent"])
+        & daily["station_id"].isin(stations["station_id"])
+    ][["station_id", "date", "pm25"]].reset_index(drop=True)
+    daily_out.to_parquet(cfg.path("labels_daily"), index=False)
+    print(f"daily labels kept: {len(daily_out):,} station-days")
+
     print(f"\nstations kept: {len(stations)}")
     print(f"station-weeks: {len(weekly):,}")
     print(f"pm25 weekly mean: median={weekly['pm25'].median():.1f} "

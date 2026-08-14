@@ -69,3 +69,27 @@ def test_coverage_filter():
     })
     out = filter_station_coverage(wk, [2023, 2024], min_coverage=0.7)
     assert set(out["station_id"]) == {"a"}
+
+
+def test_overpass_labels_use_only_pass_days():
+    import pandas as pd
+    from thesis.labels.epa import build_overpass_labels
+
+    daily = pd.DataFrame({
+        "station_id": ["s1"] * 7,
+        "date": pd.date_range("2023-07-03", periods=7),   # Mon..Sun
+        "pm25": [14.8, 22.6, 73.9, 13.3, 12.6, 12.3, 13.1],
+    })
+    # satellite passed only on Friday Jul 7
+    passes = pd.DataFrame({"station_id": ["s1"], "date": [pd.Timestamp("2023-07-07")]})
+    out = build_overpass_labels(daily, passes)
+    assert len(out) == 1
+    assert out.loc[0, "week_start"] == pd.Timestamp("2023-07-03")
+    assert out.loc[0, "pm25"] == 12.6          # Friday's value, NOT the weekly mean 23.2
+    assert out.loc[0, "n_days"] == 1
+
+    # a pass day with no EPA measurement contributes nothing
+    passes2 = pd.DataFrame({"station_id": ["s1", "s1"],
+                            "date": pd.to_datetime(["2023-07-07", "2023-07-12"])})
+    out2 = build_overpass_labels(daily, passes2)
+    assert len(out2) == 1

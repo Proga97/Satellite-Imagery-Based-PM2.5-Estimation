@@ -56,9 +56,13 @@ def main() -> int:
     parser.add_argument("--limit-weeks", type=int, default=None)
     parser.add_argument("--weeks-per-month", type=int, default=None,
                         help="subsample to N weeks per station-month (full run: 2)")
+    parser.add_argument("--product", choices=["l2a", "l1c"], default=None,
+                        help="override configs/pipeline.yaml patches.product")
     args = parser.parse_args()
 
     cfg = load_config()
+    if args.product:
+        cfg.patches["product"] = args.product
     init_ee(cfg.ee_project)
 
     jobs = select_jobs(cfg, args.limit_stations, args.limit_weeks, args.weeks_per_month)

@@ -32,6 +32,9 @@ paths:
   raw_epa: data/raw/epa
   stations: data/interim/stations.parquet
   labels_weekly: data/interim/labels_weekly.parquet
+  labels_daily: data/interim/labels_daily.parquet
+  labels_overpass: data/interim/labels_overpass.parquet
+  s2_pass_dates: data/interim/s2_pass_dates.parquet
   patches_dir: data/patches
   manifest: data/patches/manifest.parquet
   embeddings: data/processed/embeddings.parquet

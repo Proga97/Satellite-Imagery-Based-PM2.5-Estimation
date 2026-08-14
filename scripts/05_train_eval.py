@@ -25,10 +25,15 @@ def main() -> int:
     parser.add_argument("--splits", nargs="+", default=["random", "spatial"])
     parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     parser.add_argument("--test-year", type=int, default=2024)
+    parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
+    parser.add_argument("--labels", choices=["weekly", "overpass"], default="weekly")
     args = parser.parse_args()
 
     cfg = load_config()
-    table = pd.read_parquet(cfg.path("model_table"))
+    product = args.product or cfg.patches["product"]
+    table_path = cfg.path("model_table").with_name(
+        f"model_table_{product}_{args.labels}.parquet")
+    table = pd.read_parquet(table_path)
     print(f"model table: {len(table)} rows, {table['station_id'].nunique()} stations")
 
     run_dir = cfg.path("runs_dir") / args.experiment
