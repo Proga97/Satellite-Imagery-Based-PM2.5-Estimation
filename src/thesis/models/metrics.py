@@ -28,3 +28,26 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, station_ids: np.ndar
     if anom_t.abs().sum() > 0:
         out["within_station_r2"] = float(r2_score(anom_t, anom_p))
     return out
+
+
+def classification_metrics(y_true, y_pred, threshold: float = 35.0) -> dict:
+    """Regression outputs -> exceedance-detection metrics.
+
+    Binary task: PM2.5 > threshold (EPA 'Unhealthy for Sensitive Groups'
+    boundary, ug/m3). AUC uses the continuous prediction as ranking score;
+    accuracy/F1 use the thresholded prediction.
+    """
+    import numpy as np
+    from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    t = y_true > threshold
+    p = y_pred > threshold
+    out = {
+        "exceed_prevalence": float(t.mean()),
+        "accuracy": float(accuracy_score(t, p)),
+        "f1": float(f1_score(t, p, zero_division=0)),
+    }
+    out["auc"] = float(roc_auc_score(t, y_pred)) if 0 < t.sum() < len(t) else float("nan")
+    return out
