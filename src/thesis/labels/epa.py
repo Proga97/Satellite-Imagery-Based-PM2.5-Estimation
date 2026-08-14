@@ -66,6 +66,9 @@ def read_year(zip_path: Path, state_code: str) -> pd.DataFrame:
     )
     df["date"] = pd.to_datetime(df["Date Local"])
     df = df.sort_values("POC").drop_duplicates(subset=["station_id", "date"], keep="first")
+    # FEM monitors report small negatives on very clean days (instrument noise
+    # around zero); clip to 0 so downstream log transforms are safe
+    df["Arithmetic Mean"] = df["Arithmetic Mean"].clip(lower=0.0)
     return df.rename(columns={
         "Latitude": "lat", "Longitude": "lon",
         "Arithmetic Mean": "pm25", "Observation Percent": "obs_percent",

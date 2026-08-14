@@ -66,8 +66,8 @@ class PatchDataset(Dataset):
             k = int(torch.randint(0, 4, (1,)))
             if k:
                 img = torch.rot90(img, k, dims=[1, 2])
-        # log1p target: PM spans 1-466 ug/m3; raw-scale MSE is dominated by smoke days
-        y = float(np.log1p(r["pm25"]))
+        # log1p target: PM spans 0-466 ug/m3; raw-scale MSE is dominated by smoke days
+        y = float(np.log1p(max(float(r["pm25"]), 0.0)))
         return img, torch.tensor(y, dtype=torch.float32)
 
 
