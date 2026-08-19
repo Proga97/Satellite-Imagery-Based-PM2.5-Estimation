@@ -42,11 +42,13 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
 class PatchDataset(Dataset):
-    def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool):
+    def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool,
+                 band_stats: tuple | None = None):
         self.rows = rows.reset_index(drop=True)
         self.root = patch_root
         self.gain = gain
         self.train = train
+        self.band_stats = band_stats  # (mean[C], std[C]) in reflectance units, or None for RGB path
 
     def __len__(self):
         return len(self.rows)
@@ -55,8 +57,13 @@ class PatchDataset(Dataset):
         r = self.rows.iloc[i]
         wk = pd.Timestamp(r["week_start"]).strftime("%Y-%m-%d")
         arr = np.load(self.root / r["station_id"] / f"{wk}.npy").astype(np.float32)
-        img = np.clip(arr / 10000.0 * self.gain, 0, 1)
-        img = (img - IMAGENET_MEAN) / IMAGENET_STD
+        if self.band_stats is not None:
+            refl = arr / 10000.0
+            mean, std = self.band_stats
+            img = (refl - mean) / std
+        else:
+            img = np.clip(arr / 10000.0 * self.gain, 0, 1)
+            img = (img - IMAGENET_MEAN) / IMAGENET_STD
         img = torch.from_numpy(img.transpose(2, 0, 1))
         if self.train:
             if torch.rand(1) < 0.5:
@@ -71,14 +78,22 @@ class PatchDataset(Dataset):
         return img, torch.tensor(y, dtype=torch.float32)
 
 
-def make_model() -> nn.Module:
+def make_model(in_ch: int = 3) -> nn.Module:
     from torchvision.models import resnet18, ResNet18_Weights
     m = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    if in_ch != 3:
+        old = m.conv1.weight.data  # (64, 3, 7, 7)
+        conv1 = nn.Conv2d(in_ch, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        # inflate: mean of pretrained RGB filters, rescaled to keep activation
+        # magnitude comparable to the 3-channel original
+        w = old.mean(dim=1, keepdim=True).repeat(1, in_ch, 1, 1) * (3.0 / in_ch)
+        conv1.weight.data = w
+        m.conv1 = conv1
     m.fc = nn.Linear(m.fc.in_features, 1)
     return m
 
 
-def train_one(model, train_dl, val_dl, device, epochs, lr):
+def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3):
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     loss_fn = nn.HuberLoss()
@@ -108,7 +123,7 @@ def train_one(model, train_dl, val_dl, device, epochs, lr):
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         else:
             patience += 1
-            if patience >= 3:
+            if patience >= max_patience:
                 print("  early stop")
                 break
     if best_state:
@@ -132,8 +147,10 @@ def main() -> int:
     parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
                         default="scene")
     parser.add_argument("--mode", choices=["median", "single"], default="single")
+    parser.add_argument("--bands", choices=["rgb", "all"], default="rgb")
     parser.add_argument("--splits", nargs="+", default=["random", "spatial"])
     parser.add_argument("--epochs", type=int, default=12)
+    parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
@@ -146,7 +163,35 @@ def main() -> int:
     # only need keys + label; images are loaded from disk
     table = table[["station_id", "week_start", "pm25"]].copy()
     subdir = "weekly" if args.mode == "median" else "single"
+    if args.bands != "rgb":
+        subdir = f"{subdir}_{args.bands}"
     patch_root = cfg.path("patches_dir") / args.product / subdir
+    # all-bands: keep only samples whose 13-band patch exists (download may trail RGB)
+    if args.bands != "rgb":
+        has = table.apply(lambda r: (patch_root / r["station_id"] /
+              f"{pd.Timestamp(r['week_start']).strftime('%Y-%m-%d')}.npy").exists(), axis=1)
+        table = table[has].reset_index(drop=True)
+
+    band_stats = None
+    if args.bands != "rgb":
+        import json as _json
+        stats_path = cfg.path("model_table").with_name(f"band_stats_{args.product}_{args.bands}.json")
+        if stats_path.exists():
+            d = _json.loads(stats_path.read_text())
+            band_stats = (np.array(d["mean"], dtype=np.float32),
+                          np.array(d["std"], dtype=np.float32))
+        else:
+            sample = table.sample(min(300, len(table)), random_state=0)
+            acc = []
+            for r in sample.itertuples():
+                wk = pd.Timestamp(r.week_start).strftime("%Y-%m-%d")
+                a = np.load(patch_root / r.station_id / f"{wk}.npy").astype(np.float32) / 10000.0
+                acc.append(a.reshape(-1, a.shape[-1]))
+            allpix = np.concatenate(acc)
+            mean, std = allpix.mean(0), allpix.std(0) + 1e-6
+            stats_path.write_text(_json.dumps({"mean": mean.tolist(), "std": std.tolist()}))
+            band_stats = (mean.astype(np.float32), std.astype(np.float32))
+        print(f"band stats over {13} channels ready")
     device = "mps" if torch.backends.mps.is_available() else \
              ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"{len(table)} samples, {table['station_id'].nunique()} stations, device={device}")
@@ -182,11 +227,13 @@ def main() -> int:
             # repeated fold loops; in-process loading is stable and nearly
             # as fast here (decode is cheap relative to the forward pass)
             dl = lambda rows, train: DataLoader(
-                PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train),
+                PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
+                             band_stats=band_stats),
                 batch_size=args.batch_size, shuffle=train, num_workers=0)
-            model = make_model().to(device)
+            in_ch = 3 if band_stats is None else len(band_stats[0])
+            model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
-                              args.epochs, args.lr)
+                              args.epochs, args.lr, args.patience)
             y_pred = predict(model, dl(te, False), device)
             m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
             m.update(split=split_name, fold=fold, n_test=len(te))

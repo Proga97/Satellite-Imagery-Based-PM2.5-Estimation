@@ -19,6 +19,8 @@ patches:
   size_px: 224
   scale_m: 10
   bands: [B4, B3, B2]
+  # full L1C spectral stack (13 bands, 60m/20m bands resampled to the 10m grid)
+  bands_all: [B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B10, B11, B12]
   scl_drop: [0, 1, 3, 8, 9, 10, 11]   # keep 2,4,5,6,7
   cs_cdf_min: 0.6                # cloudscore+ threshold (l1c only)
   min_valid_fraction: 0.6

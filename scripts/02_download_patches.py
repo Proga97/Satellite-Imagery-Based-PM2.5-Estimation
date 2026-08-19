@@ -62,6 +62,8 @@ def main() -> int:
                         help="weekly median composite (default) or least-cloudy single scene")
     parser.add_argument("--min-valid", type=float, default=None,
                         help="override min_valid_fraction (single mode: use ~0.3 so smoke survives)")
+    parser.add_argument("--bands", choices=["rgb", "all"], default="rgb",
+                        help="rgb = B4/B3/B2; all = full 13-band spectral stack")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -71,6 +73,9 @@ def main() -> int:
         cfg.patches["mode"] = args.mode
     if args.min_valid is not None:
         cfg.patches["min_valid_fraction"] = args.min_valid
+    if args.bands == "all":
+        cfg.patches["bands"] = list(cfg.patches["bands_all"])
+        cfg.patches["band_set"] = "all"
     init_ee(cfg.ee_project)
 
     jobs = select_jobs(cfg, args.limit_stations, args.limit_weeks, args.weeks_per_month)
