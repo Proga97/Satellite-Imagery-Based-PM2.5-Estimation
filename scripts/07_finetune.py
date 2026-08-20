@@ -173,7 +173,7 @@ def main() -> int:
     parser.add_argument("--product", choices=["l2a", "l1c"], default="l1c")
     parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
                         default="scene")
-    parser.add_argument("--mode", choices=["median", "single"], default="single")
+    parser.add_argument("--mode", choices=["median", "single", "scene"], default="single")
     parser.add_argument("--bands", choices=["rgb", "all"], default="rgb")
     parser.add_argument("--splits", nargs="+", default=["random", "spatial"])
     parser.add_argument("--epochs", type=int, default=12)
@@ -188,13 +188,14 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = load_config()
+    tbl_sfx = "_allscenes" if args.mode == "scene" else ""
     table_path = cfg.path("model_table").with_name(
-        f"model_table_{args.product}_{args.labels}.parquet")
+        f"model_table_{args.product}_{args.labels}{tbl_sfx}.parquet")
     table = pd.read_parquet(table_path)
     # only need keys + label (+ region for the region split); images load from disk
     keep = ["station_id", "week_start", "pm25"] + (["region"] if "region" in table else [])
     table = table[keep].copy()
-    subdir = "weekly" if args.mode == "median" else "single"
+    subdir = {"median": "weekly", "single": "single", "scene": "scenes"}[args.mode]
     if args.bands != "rgb":
         subdir = f"{subdir}_{args.bands}"
     patch_root = cfg.path("patches_dir") / args.product / subdir

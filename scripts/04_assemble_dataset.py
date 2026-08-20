@@ -18,6 +18,8 @@ def main() -> int:
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None)
     parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
                         default="weekly")
+    parser.add_argument("--mode", choices=["single", "scene"], default="single",
+                        help="which patch set the scenehour labels join against")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -26,7 +28,7 @@ def main() -> int:
         # label = mean PM2.5 within +/-1h of the exact overpass timestamp
         manifest = pd.read_parquet(cfg.path("manifest"))
         scenes = manifest[(manifest["product"] == product)
-                          & (manifest.get("mode", "median") == "single")
+                          & (manifest.get("mode", "median") == args.mode)
                           & (manifest.get("bands", "rgb").fillna("rgb") == "rgb")
                           & (manifest["status"] == "ok")
                           & (manifest["scene_date"] != "")]
@@ -38,7 +40,7 @@ def main() -> int:
             on=["station_id", "scene_date"], how="inner")
         labels = labels[["station_id", "week_start", "pm25"]]
         print(f"scenehour labels: {len(scenes)} scenes, {len(labels)} with overpass-hour value")
-        emb_name = f"embeddings_{product}_single.parquet"
+        emb_name = f"embeddings_{product}_{'single' if args.mode == 'single' else 'scenes'}.parquet"
     elif args.labels == "scene":
         # label = PM2.5 on the exact acquisition date of the single scene
         manifest = pd.read_parquet(cfg.path("manifest"))
@@ -62,7 +64,8 @@ def main() -> int:
     stations = pd.read_parquet(cfg.path("stations"))
 
     table, report = assemble(labels, embeddings, stations)
-    out = cfg.path("model_table").with_name(f"model_table_{product}_{args.labels}.parquet")
+    sfx = "_allscenes" if getattr(args, "mode", "single") == "scene" else ""
+    out = cfg.path("model_table").with_name(f"model_table_{product}_{args.labels}{sfx}.parquet")
     table.to_parquet(out, index=False)
     out.with_suffix(".report.json").write_text(json.dumps(report, indent=2))
 

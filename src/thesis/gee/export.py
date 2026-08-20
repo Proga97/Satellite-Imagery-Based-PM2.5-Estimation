@@ -42,7 +42,7 @@ class PatchResult:
 
 def patch_path(patches_dir: Path, product: str, station_id: str, week_start: str,
                mode: str = "median", band_set: str = "rgb") -> Path:
-    subdir = "weekly" if mode == "median" else "single"
+    subdir = {"median": "weekly", "single": "single", "scene": "scenes"}[mode]
     if band_set != "rgb":
         subdir = f"{subdir}_{band_set}"
     return patches_dir / product / subdir / station_id / f"{week_start}.npy"
@@ -54,7 +54,8 @@ def _download_one(job: PatchJob, cfg_patches: dict, patches_dir: Path) -> PatchR
     band_set = cfg_patches.get("band_set", "rgb")
     bands = list(cfg_patches["bands"])
     start = job.week_start
-    end = (pd.Timestamp(job.week_start) + pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+    window_days = 1 if mode == "scene" else 7
+    end = (pd.Timestamp(job.week_start) + pd.Timedelta(days=window_days)).strftime("%Y-%m-%d")
 
     comp, grid = build_composite(job.lat, job.lon, start, end, cfg_patches, job.epsg)
     request = {"expression": comp, "fileFormat": "NUMPY_NDARRAY", "grid": grid.to_request_grid()}

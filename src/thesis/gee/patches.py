@@ -93,7 +93,7 @@ def build_composite(
         )
 
     mode = cfg_patches.get("mode", "median")
-    if mode == "single":
+    if mode in ("single", "scene"):
         # Least-cloudy single scene by granule metadata. Pixels are saved
         # UNMASKED (smoke must survive); the mask only feeds CNT so
         # valid_fraction still reports how "clear" CloudScore+/SCL thinks

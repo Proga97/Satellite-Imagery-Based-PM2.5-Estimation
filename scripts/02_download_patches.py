@@ -58,8 +58,9 @@ def main() -> int:
                         help="subsample to N weeks per station-month (full run: 2)")
     parser.add_argument("--product", choices=["l2a", "l1c"], default=None,
                         help="override configs/pipeline.yaml patches.product")
-    parser.add_argument("--mode", choices=["median", "single"], default=None,
-                        help="weekly median composite (default) or least-cloudy single scene")
+    parser.add_argument("--mode", choices=["median", "single", "scene"], default=None,
+                        help="median = weekly composite; single = best scene per week; "
+                             "scene = EVERY labeled acquisition (max data)")
     parser.add_argument("--min-valid", type=float, default=None,
                         help="override min_valid_fraction (single mode: use ~0.3 so smoke survives)")
     parser.add_argument("--bands", choices=["rgb", "all"], default="rgb",
@@ -78,7 +79,23 @@ def main() -> int:
         cfg.patches["band_set"] = "all"
     init_ee(cfg.ee_project)
 
-    jobs = select_jobs(cfg, args.limit_stations, args.limit_weeks, args.weeks_per_month)
+    if args.mode == "scene":
+        import pandas as _pd
+        lab = _pd.read_parquet(cfg.path("labels_scenehour"))
+        stations = _pd.read_parquet(cfg.path("stations")).set_index("station_id")
+        lab = lab[lab["station_id"].isin(stations.index)]
+        if args.limit_stations:
+            keep = lab["station_id"].drop_duplicates().head(args.limit_stations)
+            lab = lab[lab["station_id"].isin(keep)]
+        jobs = []
+        for row in lab.drop_duplicates(["station_id", "scene_date"]).itertuples():
+            lat = float(stations.at[row.station_id, "lat"])
+            lon = float(stations.at[row.station_id, "lon"])
+            jobs.append(PatchJob(station_id=row.station_id,
+                                 week_start=_pd.Timestamp(row.scene_date).strftime("%Y-%m-%d"),
+                                 lat=lat, lon=lon, epsg=cfg.utm_epsg(lon)))
+    else:
+        jobs = select_jobs(cfg, args.limit_stations, args.limit_weeks, args.weeks_per_month)
     print(f"{len(jobs)} station-week jobs "
           f"({len({j.station_id for j in jobs})} stations, product={cfg.patches['product']})")
 
