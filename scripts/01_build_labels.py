@@ -24,9 +24,12 @@ def main() -> int:
     daily_parts = []
     for year in cfg.years:
         zp = epa.download_year(year, raw_dir)
-        part = epa.read_year(zp, cfg.region["epa_state_code"])
-        print(f"{year}: {len(part):,} station-days, {part['station_id'].nunique()} stations")
-        daily_parts.append(part)
+        for reg in cfg.regions:
+            part = epa.read_year(zp, reg["epa_state_code"])
+            part["region"] = reg["name"]
+            print(f"{year} {reg['name']}: {len(part):,} station-days, "
+                  f"{part['station_id'].nunique()} stations")
+            daily_parts.append(part)
     daily = pd.concat(daily_parts, ignore_index=True)
 
     stations = epa.build_stations(daily)

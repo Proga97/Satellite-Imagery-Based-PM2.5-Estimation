@@ -81,7 +81,8 @@ def build_stations(daily: pd.DataFrame) -> pd.DataFrame:
     return (
         daily.groupby("station_id")
         .agg(lat=("lat", "median"), lon=("lon", "median"),
-             site_name=("site_name", "first"), n_days=("pm25", "size"))
+             site_name=("site_name", "first"), n_days=("pm25", "size"),
+             region=("region", "first"))
         .reset_index()
     )
 
@@ -143,7 +144,7 @@ def build_overpass_labels(daily: pd.DataFrame, pass_dates: pd.DataFrame) -> pd.D
 HOURLY_URL = "https://aqs.epa.gov/aqsweb/airdata/hourly_88101_{year}.zip"
 HOURLY_USECOLS = [
     "State Code", "County Code", "Site Num", "POC",
-    "Date Local", "Time Local", "Sample Measurement",
+    "Date GMT", "Time GMT", "Sample Measurement",
 ]
 
 
@@ -160,7 +161,11 @@ def download_hourly_year(year: int, dest_dir: Path) -> Path:
 
 
 def read_hourly_year(zip_path: Path, state_code: str) -> pd.DataFrame:
-    """Hourly FEM measurements -> station_id, ts_local (naive), pm25."""
+    """Hourly FEM measurements -> station_id, ts (UTC, naive), pm25.
+
+    GMT timestamps are used so matching against Sentinel-2 acquisition times
+    (natively UTC) needs no per-region timezone logic (Texas spans two zones).
+    """
     with zipfile.ZipFile(zip_path) as zf:
         name = zf.namelist()[0]
         with zf.open(name) as f:
@@ -177,25 +182,26 @@ def read_hourly_year(zip_path: Path, state_code: str) -> pd.DataFrame:
         + "-" + df["Site Num"].str.zfill(4)
     )
     df = df.sort_values("POC").drop_duplicates(
-        subset=["station_id", "Date Local", "Time Local"], keep="first")
-    df["ts_local"] = pd.to_datetime(df["Date Local"] + " " + df["Time Local"])
+        subset=["station_id", "Date GMT", "Time GMT"], keep="first")
+    df["ts"] = pd.to_datetime(df["Date GMT"] + " " + df["Time GMT"])
     df["pm25"] = df["Sample Measurement"].clip(lower=0.0)
-    return df[["station_id", "ts_local", "pm25"]].dropna().reset_index(drop=True)
+    return df[["station_id", "ts", "pm25"]].dropna().reset_index(drop=True)
 
 
 def build_overpass_hour_labels(hourly: pd.DataFrame, pass_times: pd.DataFrame,
                                window_hours: int = 1) -> pd.DataFrame:
     """Label = mean hourly PM2.5 within +/-window_hours of the exact S2 overpass.
 
-    pass_times: station_id, ts_local (exact acquisition time, naive local)
-    Output keyed like other label tables: station_id, week_start, plus scene_date.
+    Both inputs carry naive-UTC timestamps in column "ts". The scene_date key is
+    the UTC date, matching the manifest DATE band (midday overpasses keep UTC and
+    local calendar dates equal across CONUS).
     """
     h = hourly.copy()
-    h["date"] = h["ts_local"].dt.normalize()
-    h["hour"] = h["ts_local"].dt.hour
+    h["date"] = h["ts"].dt.normalize()
+    h["hour"] = h["ts"].dt.hour
     p = pass_times.copy()
-    p["date"] = p["ts_local"].dt.normalize()
-    p["pass_hour"] = p["ts_local"].dt.hour
+    p["date"] = p["ts"].dt.normalize()
+    p["pass_hour"] = p["ts"].dt.hour
     p = p.drop_duplicates(["station_id", "date"])
 
     m = p[["station_id", "date", "pass_hour"]].merge(

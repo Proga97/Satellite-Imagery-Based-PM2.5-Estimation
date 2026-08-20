@@ -15,7 +15,8 @@ def assemble(labels: pd.DataFrame, embeddings: pd.DataFrame, stations: pd.DataFr
     emb["week_start"] = pd.to_datetime(emb["week_start"]).dt.strftime("%Y-%m-%d")
 
     table = lab.merge(emb, on=["station_id", "week_start"], how="inner")
-    table = table.merge(stations[["station_id", "lat", "lon"]], on="station_id", how="left")
+    station_cols = ["station_id", "lat", "lon"] + (["region"] if "region" in stations else [])
+    table = table.merge(stations[station_cols], on="station_id", how="left")
 
     wk = pd.to_datetime(table["week_start"])
     table["year"] = wk.dt.year

@@ -32,4 +32,18 @@ def temporal_split(table: pd.DataFrame, test_year: int):
     yield train_idx, test_idx
 
 
-SPLITS = {"random": random_split, "spatial": spatial_folds, "temporal": temporal_split}
+def region_split(table: pd.DataFrame):
+    """Leave-one-region-out: train on all other regions, test on the held-out one.
+
+    The strongest generalization test: the model has never seen ANY station,
+    landscape, or climate from the test region.
+    """
+    regions = table["region"].to_numpy()
+    for reg in pd.unique(regions):
+        test_idx = np.flatnonzero(regions == reg)
+        train_idx = np.flatnonzero(regions != reg)
+        yield train_idx, test_idx
+
+
+SPLITS = {"random": random_split, "spatial": spatial_folds,
+          "temporal": temporal_split, "region": region_split}

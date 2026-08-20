@@ -74,3 +74,20 @@ def test_canary_station_id_feature():
 
     assert r2_random > 0.8, f"random-split memorization should score high, got {r2_random:.2f}"
     assert np.mean(r2_spatial) < 0.2, f"spatial CV must kill memorization, got {np.mean(r2_spatial):.2f}"
+
+
+def test_region_split_is_disjoint():
+    import numpy as np
+    import pandas as pd
+    from thesis.models.splits import region_split
+
+    t = pd.DataFrame({
+        "station_id": ["a", "b", "c", "d"] * 3,
+        "region": ["california", "california", "texas", "texas"] * 3,
+        "pm25": np.arange(12.0),
+    })
+    folds = list(region_split(t))
+    assert len(folds) == 2
+    for tr, te in folds:
+        assert set(t.iloc[tr]["region"]).isdisjoint(set(t.iloc[te]["region"]))
+        assert len(tr) + len(te) == len(t)

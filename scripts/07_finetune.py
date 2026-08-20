@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from thesis.config import load_config
 from thesis.models.metrics import compute_metrics
-from thesis.models.splits import random_split, spatial_folds
+from thesis.models.splits import random_split, region_split, spatial_folds
 
 
 def iter_splits(table: pd.DataFrame, name: str, seed: int):
@@ -34,6 +34,8 @@ def iter_splits(table: pd.DataFrame, name: str, seed: int):
         yield from random_split(table, seed=seed)
     elif name == "spatial":
         yield from spatial_folds(table)
+    elif name == "region":
+        yield from region_split(table)
     else:
         raise ValueError(f"unsupported split for finetune: {name}")
 
@@ -162,8 +164,9 @@ def main() -> int:
     table_path = cfg.path("model_table").with_name(
         f"model_table_{args.product}_{args.labels}.parquet")
     table = pd.read_parquet(table_path)
-    # only need keys + label; images are loaded from disk
-    table = table[["station_id", "week_start", "pm25"]].copy()
+    # only need keys + label (+ region for the region split); images load from disk
+    keep = ["station_id", "week_start", "pm25"] + (["region"] if "region" in table else [])
+    table = table[keep].copy()
     subdir = "weekly" if args.mode == "median" else "single"
     if args.bands != "rgb":
         subdir = f"{subdir}_{args.bands}"

@@ -20,9 +20,6 @@ from thesis.config import load_config
 from thesis.gee.auth import init_ee
 from thesis.labels import epa
 
-LOCAL_TZ = "America/Los_Angeles"
-
-
 def query_pass_times(cfg, stations: pd.DataFrame) -> pd.DataFrame:
     import ee
 
@@ -41,11 +38,10 @@ def query_pass_times(cfg, stations: pd.DataFrame) -> pd.DataFrame:
         )
         t = (
             pd.to_datetime(pd.Series(ts, dtype="int64"), unit="ms", utc=True)
-            .dt.tz_convert(LOCAL_TZ)
-            .dt.tz_localize(None)
+            .dt.tz_localize(None)  # keep UTC, naive
             .drop_duplicates()
         )
-        return pd.DataFrame({"station_id": row.station_id, "ts_local": t})
+        return pd.DataFrame({"station_id": row.station_id, "ts": t})
 
     frames = []
     with ThreadPoolExecutor(max_workers=16) as pool:
@@ -64,23 +60,35 @@ def main() -> int:
     cfg = load_config()
 
     times_cache = cfg.path("s2_pass_times")
+    stations = pd.read_parquet(cfg.path("stations"))
     if times_cache.exists() and not args.force:
         pass_times = pd.read_parquet(times_cache)
+        if "ts_local" in pass_times.columns:  # pre-UTC cache: rebuild
+            pass_times = pass_times.iloc[0:0]
+            pass_times = pd.DataFrame(columns=["station_id", "ts"])
+        missing = stations[~stations["station_id"].isin(pass_times["station_id"])]
+        if len(missing):
+            init_ee(cfg.ee_project)
+            print(f"querying pass times for {len(missing)} new stations")
+            pass_times = pd.concat([pass_times, query_pass_times(cfg, missing)],
+                                   ignore_index=True)
+            pass_times.to_parquet(times_cache, index=False)
     else:
         init_ee(cfg.ee_project)
-        stations = pd.read_parquet(cfg.path("stations"))
         pass_times = query_pass_times(cfg, stations)
         pass_times.to_parquet(times_cache, index=False)
     print(f"pass times: {len(pass_times):,} acquisitions "
-          f"(hour-of-day range {pass_times['ts_local'].dt.hour.min()}-"
-          f"{pass_times['ts_local'].dt.hour.max()} local)")
+          f"(hour-of-day range {pass_times['ts'].dt.hour.min()}-"
+          f"{pass_times['ts'].dt.hour.max()} UTC)")
 
     hourly_parts = []
     for year in cfg.years:
         zp = epa.download_hourly_year(year, cfg.path("raw_epa"))
-        part = epa.read_hourly_year(zp, cfg.region["epa_state_code"])
-        print(f"{year}: {len(part):,} station-hours, {part['station_id'].nunique()} stations")
-        hourly_parts.append(part)
+        for reg in cfg.regions:
+            part = epa.read_hourly_year(zp, reg["epa_state_code"])
+            print(f"{year} {reg['name']}: {len(part):,} station-hours, "
+                  f"{part['station_id'].nunique()} stations")
+            hourly_parts.append(part)
     hourly = pd.concat(hourly_parts, ignore_index=True)
 
     labels = epa.build_overpass_hour_labels(hourly, pass_times, args.window_hours)
