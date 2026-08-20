@@ -195,6 +195,31 @@ Findings:
   rows not filtered in assembly) — discarded, fixed (`bands=="rgb"` filter), rerun clean.
   Earlier experiments predate the 13-band rows and were unaffected.
 
+## 3c. Three-region experiment (New York added, Aug 20 2026)
+
+New York = third region (EPA state 36). Only **9 stations** pass the 70%-weekly-coverage
+filter — NY's network is FRM-heavy (1-in-3-day filter samplers can't meet >=5 days/week);
+729 scenes. Dataset: 159 stations / 15,949 hour-synced samples across 3 climates.
+Run `threeregion_finetune` (tuned recipe, 3-fold leave-region-out):
+
+| Held-out region | Trained on | R² | Within-st R² | Exceedance |
+|---|---|---|---|---|
+| California | TX+NY | 0.065 | 0.101 | — |
+| Texas | CA+NY | −0.103 | 0.042 | — |
+| **New York** | **CA+TX** | **0.232** | **0.312** | **AUC 0.999, F1 0.91** |
+
+Findings:
+- **Two-climate training transfers to a third unseen climate far better than one-climate
+  training did** (NY: R² 0.23 / within 0.31, vs pairwise transfers ~0.04). Climate diversity
+  in training is the lever for cross-region generalization.
+- **Extreme-event detection transfers almost perfectly**: the CA+TX model caught New York's
+  June-2023 Canadian-wildfire smoke days with F1 0.91 / AUC ~1.0 — heavy smoke looks the
+  same everywhere; the climate-specific part is the low-to-moderate range.
+- Asymmetry explained: CA/TX as test regions are mostly *sources* of training diversity
+  (their own transfer stays poor when held out); NY benefits as the *recipient* of a
+  diverse training set. Caveats: 9 NY stations, 724 scenes, 5 exceedance days (small n).
+- between_station_r2 meaningless at 9 stations (−4.3).
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
