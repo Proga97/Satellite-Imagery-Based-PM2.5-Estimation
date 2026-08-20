@@ -220,6 +220,21 @@ Findings:
   diverse training set. Caveats: 9 NY stations, 724 scenes, 5 exceedance days (small n).
 - between_station_r2 meaningless at 9 stations (−4.3).
 
+## 3d. All-three-regions combined model (`combined3_finetune`)
+
+Model trained on CA+TX+NY together (15,949 samples, 159 stations), tuned recipe:
+random R² 0.494 / within 0.487; spatial 5-fold R² **0.327** (folds 0.38/0.42/0.46/0.01/0.35 —
+median 0.38, one hard fold drags the mean; val loss on that fold looked fine, so it is test-
+group distribution shift, not a training failure). Within-station 0.358.
+
+**The generalization ladder (thesis-ready):**
+| Distance from training distribution | R² |
+|---|---|
+| Same states, seen stations (random) | 0.49 |
+| Same states, unseen stations (spatial) | 0.33 (median fold 0.38) |
+| Unseen state, 2-climate training (NY) | 0.23 |
+| Unseen state, 1-climate training | ~0.04 |
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
