@@ -272,6 +272,9 @@ def main() -> int:
                           "y_true": te["pm25"], "y_pred": y_pred}).to_parquet(
                 run_dir / f"preds_{split_name}_f{fold}.parquet", index=False)
 
+    if not all_rows:
+        print("no evaluation rows (final mode) - weights saved, skipping summary")
+        return 0
     res = pd.DataFrame(all_rows)
     summary = res.groupby("split")[["r2", "rmse", "mae", "between_station_r2",
                                     "within_station_r2"]].mean().round(3)
