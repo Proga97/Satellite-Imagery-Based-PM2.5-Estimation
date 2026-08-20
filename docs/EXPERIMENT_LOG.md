@@ -251,6 +251,23 @@ Results (all states trained together, per user direction — no state-holdout in
 - New best honest image-only result: **0.382 across five climates** (prev best 0.387 on
   CA-only; equal performance on a 5x more diverse domain = a strictly stronger model).
 
+## 3f. Single 80/20 station holdout + final deployable models (Aug 20 2026)
+
+Per user direction, the simple standard protocol: one split, 80% of stations train,
+20% test, one model, weights saved.
+- **Unstratified draw failed instructively**: random shuffle put 35% of WA and 33% of NY
+  stations in test -> those regions undertrained (WA R² −2.7, NY −0.7) -> pooled R² 0.031
+  despite healthy CA/TX/IL (0.17–0.39) and AUC 0.93. Same recipe, same data as the CV's
+  0.38 — split design alone. (Thesis methods-chapter cautionary example.)
+- **Stratified by region (20% of stations within each state)**: R² **0.443**,
+  within-station **0.510**, AUC 0.928 — best honest single-number result of the project.
+  Per region: CA 0.44, IL 0.47, TX 0.30, WA 0.02 (4 stations), NY −0.81 (1 station —
+  too few held-out stations to score meaningfully; report with that caveat).
+- Saved model files (first deployable artifacts, in gitignored data/runs/):
+  `final_model/model_final_s0.pt` (all 198 stations) and
+  `holdout80_20_stratified/model_holdout_s0.pt` (158 stations, honest 20% exam attached).
+  NOTE: not in git — back up separately.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
