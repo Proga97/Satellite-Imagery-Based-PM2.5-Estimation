@@ -34,6 +34,19 @@ def iter_splits(table: pd.DataFrame, name: str, seed: int):
         # train on ALL stations (no test holdout): the deployable model.
         # test set = empty; early stopping still uses a station-aware val carve-out.
         yield np.arange(len(table)), np.array([], dtype=int)
+    elif name == "holdout":
+        # standard split: 80% of stations train, 20% test - STRATIFIED by region
+        # so small states keep 80% training representation (an unstratified draw
+        # put 35% of WA stations in test and its R2 collapsed to -2.7)
+        rng = np.random.default_rng(seed)
+        test_st: set = set()
+        by_region = table.groupby("region")["station_id"] if "region" in table else             {"all": table["station_id"]}.items()
+        for _, ids in (by_region if isinstance(by_region, list) else by_region):
+            ids = ids.unique()
+            rng.shuffle(ids)
+            test_st.update(ids[: max(1, int(len(ids) * 0.2))])
+        mask = table["station_id"].isin(test_st).to_numpy()
+        yield np.flatnonzero(~mask), np.flatnonzero(mask)
     elif name == "random":
         yield from random_split(table, seed=seed)
     elif name == "spatial":
@@ -256,12 +269,13 @@ def main() -> int:
             model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
                               args.epochs, args.lr, args.patience, args.min_epochs)
-            if split_name == "final":
-                out_path = run_dir / f"model_final_s{args.seed}.pt"
+            if split_name in ("final", "holdout"):
+                out_path = run_dir / f"model_{split_name}_s{args.seed}.pt"
                 torch.save({"state_dict": model.state_dict(),
                             "recipe": vars(args)}, out_path)
-                print(f"saved final model weights -> {out_path}")
-                continue
+                print(f"saved model weights -> {out_path}")
+                if split_name == "final":
+                    continue
             y_pred = predict(model, dl(te, False), device)
             m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
             m.update(split=split_name, fold=fold, n_test=len(te))
