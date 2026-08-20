@@ -153,6 +153,8 @@ def main() -> int:
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--workers", type=int, default=4,
+                        help="DataLoader workers; uses macOS-safe spawn context (0 = in-process)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -223,13 +225,16 @@ def main() -> int:
             tr2 = tr[~tr["station_id"].isin(val_stations)]
             print(f"[{split_name} fold {fold}] train {len(tr2)} val {len(va)} test {len(te)}")
 
-            # num_workers=0: macOS/MPS DataLoader workers deadlock across
-            # repeated fold loops; in-process loading is stable and nearly
-            # as fast here (decode is cheap relative to the forward pass)
+            # fork-context workers deadlock with MPS on macOS; spawn context is
+            # the safe way to parallelize loading (matters for 13-band patches,
+            # where single-threaded decode starves the GPU)
+            loader_kw = dict(batch_size=args.batch_size, num_workers=args.workers)
+            if args.workers > 0:
+                loader_kw.update(multiprocessing_context="spawn", persistent_workers=True)
             dl = lambda rows, train: DataLoader(
                 PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
                              band_stats=band_stats),
-                batch_size=args.batch_size, shuffle=train, num_workers=0)
+                shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
             model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
