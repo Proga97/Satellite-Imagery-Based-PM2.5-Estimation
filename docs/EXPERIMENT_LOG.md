@@ -168,6 +168,33 @@ summary CSV alongside.
 
 ---
 
+## 3b. Two-region experiment (Texas added, Aug 20 2026)
+
+Texas added as second region: 47 stations, 4,647 L1C single scenes (region = 2-line YAML;
+universal UTM-from-longitude; hour matching moved to UTC via EPA GMT columns — correct in
+all timezones). Combined dataset: 150 stations, 15,225 hour-synced samples.
+Run `region_finetune_l1c_scenehour` (tuned recipe, splits = region/spatial/random):
+
+| Split | R² | Within-st R² | Notes |
+|---|---|---|---|
+| random (reference) | 0.392 | 0.379 | between-st 0.495 |
+| spatial, combined 5-fold | **0.362** | 0.400 | folds 0.32/0.35/0.36/0.43/0.35 — matches CA-only 0.39 |
+| **region (leave-state-out)** | **0.041** | 0.10 | CA→TX R² 0.006 (AUC 0.74); TX→CA R² 0.076 (AUC 0.79) |
+
+Findings:
+- **Cross-region zero-shot transfer fails for regression** (R² ≈ 0.04 both directions);
+  detection AUC degrades 0.91 → 0.74–0.79 but stays above chance. The haze signature is
+  climate-specific (dry CA smoke vs humid Gulf haze; golden vs green backgrounds).
+- **Within-region generalization survives multi-region training**: combined spatial CV 0.36
+  ≈ CA-only 0.39 despite adding a whole new climate — "train where you have some monitors
+  in each climate zone" is the supported deployment story.
+- Frozen embeddings fail cross-region completely (`region_frozen`: R² −0.12).
+- Thesis framing: station-level transfer works (0.36–0.39), state-level does not (0.04) —
+  this measured transferability boundary is a contribution; no cited paper quantifies it.
+- Incident: first region run used a table where CA scenes were duplicated (13-band manifest
+  rows not filtered in assembly) — discarded, fixed (`bands=="rgb"` filter), rerun clean.
+  Earlier experiments predate the 13-band rows and were unaffected.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
