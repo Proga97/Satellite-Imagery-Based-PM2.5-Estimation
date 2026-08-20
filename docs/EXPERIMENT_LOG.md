@@ -1,0 +1,203 @@
+# Experiment Log — PM2.5 Estimation from Sentinel-2 Imagery
+
+Chronological record of every dataset decision, experiment, result, and rationale.
+Written for thesis drafting: each section maps to methodology/results/discussion content.
+Numbers quoted below are means over folds/seeds; fold-level detail is in
+`data/runs/consolidated_results.parquet` (76 rows) and per-run directories.
+
+---
+
+## 1. Dataset construction
+
+### Ground truth (labels)
+- **Source**: EPA AQS pre-generated files, parameter 88101 (PM2.5 FRM/FEM, reference-grade,
+  validated). Daily: `daily_88101_{year}.zip`; hourly: `hourly_88101_{year}.zip`
+  (aqs.epa.gov/aqsweb/airdata). Chosen over the OpenAQ raw archive (proposal's source)
+  because it is the same monitors, pre-QC'd, in 2 downloads instead of ~145k files.
+  OpenAQ remains a pluggable backend for non-US expansion.
+- **Region**: California (config-driven bbox + boundary). All reference stations kept —
+  data cost scales with stations x weeks, not area.
+- **Years**: 2020 + 2023 + 2024. 2020 added for wildfire-season high-PM samples
+  (before: only 2.4% of samples >20 µg/m³; PM range extended to 466 µg/m³).
+  Station coverage requirement (>=70% of weeks) judged on 2023–24 only, so 2020 is
+  bonus data and does not drop stations (this mattered: requiring 2020 coverage cut
+  stations 104->71; the fix restored 104, of which 103 have hourly FEM data).
+- **QC**: 24-hour sample durations only; Event Type != "Excluded" (wildfire rows KEPT);
+  dedupe multi-monitor sites by lowest POC; negative concentrations clipped to 0
+  (FEM instrument noise on clean days — discovered when log1p produced NaNs);
+  daily rows require Observation Percent >= 75; weekly aggregation requires >=5/7 days.
+- **Label variants (the sync ladder)** — all keyed (station_id, week_start):
+  1. `weekly`  – ISO-week mean of daily values (proposal's design).
+  2. `overpass` – mean over only the days a Sentinel-2 acquisition occurred that week.
+  3. `scene`   – PM2.5 on the exact acquisition date of the downloaded scene.
+  4. `scenehour` – mean of hourly PM2.5 within ±1h of the exact overpass timestamp
+     (overpasses are 10:00–12:00 local; 61,983 acquisition timestamps queried from GEE).
+- Weekly vs overpass-day labels correlate r=0.889; overpass-hour vs same-day daily mean
+  r=0.894 → roughly 20% of label variance at each rung was image/label mismatch, not signal.
+  Canonical example (Rubidoux, week of 2023-07-03): weekly label 22.6 driven by a July-4th
+  fireworks spike to 73.9 on Jul 5; the only S2 pass was Jul 7 when PM was 12.6.
+
+### Imagery
+- **Source**: Sentinel-2 via Google Earth Engine, `ee.data.computePixels`, server-side
+  processing; patches 224x224 px @ 10 m = 2.24 km, station-centered, per-station UTM zone
+  (EPSG:32610/32611), pixels snapped to the 10 m grid.
+- **Products**: L2A surface reflectance (`COPERNICUS/S2_SR_HARMONIZED`, SCL cloud mask,
+  drop classes {0,1,3,8,9,10,11}) and L1C top-of-atmosphere (`COPERNICUS/S2_HARMONIZED`,
+  CloudScore+ `cs_cdf>=0.6` mask). L1C matters because L2A atmospheric correction is
+  designed to remove aerosol effects — the signal being predicted.
+- **Modes**: weekly median composite (proposal design) and `single` = least-cloudy single
+  scene per station-week by CLOUDY_PIXEL_PERCENTAGE, saved UNMASKED so smoke survives
+  (CloudScore+ cannot distinguish smoke from cloud), with min_valid_fraction relaxed to 0.3
+  and the acquisition date embedded as a DATE band (days since epoch, uint16).
+- **Bands**: RGB (B4/B3/B2) and `all` = 13-band L1C stack (B1..B12 incl. B8A, B10),
+  60/20 m bands resampled to the 10 m grid.
+- **Volumes**: L2A weekly 3,830 patches; L1C weekly 4,137; L1C single RGB 11,409 (14 GB
+  uint16 .npy); L1C single 13-band 11,409 (14 GB). ~20–25% of station-weeks lost to
+  clouds/no-images (NorCal winters). GEE throughput ~10–25 patches/s at 24 workers —
+  the anticipated "overnight bottleneck" never materialized.
+
+### Features / models
+- Frozen path: torchvision ResNet-18 (IMAGENET1K_V1), fc->Identity, 512-d GAP embedding
+  (preprocess: reflectance/10000, visual gain 3.0 clip, ImageNet norm; masked px <- patch
+  mean) -> LightGBM (2000 trees, lr 0.05, early stop; group-aware valid under spatial CV)
+  and RandomForest.
+- Fine-tuned path (script 07): ResNet-18 end-to-end, fc->Linear(512,1), log1p target,
+  HuberLoss, AdamW + cosine, flips/rot90 aug ONLY (no color jitter — it would erase the
+  haze signal), station-aware 15% val carve-out for early stopping, best-val checkpoint.
+  13-band variant: first conv inflated from ImageNet RGB weights (mean over RGB, repeated,
+  x3/13 scale), per-band standardization from cached dataset stats.
+
+### Evaluation protocol (identical across all experiments)
+- Splits: `random` 80/20 row-level (the deliberately optimistic reference; how most of the
+  literature evaluates) and `spatial` GroupKFold(5) on station_id (no station in both
+  train and test; the honest number). Temporal split implemented but unused so far.
+- Regression metrics: R², RMSE, MAE, plus decomposition — between-station R² (per-station
+  mean predictions vs true means) and within-station R² (anomalies from station means).
+  The decomposition separates "knows which places are polluted" from "sees pollution change".
+- Classification metrics (derived from the same regressor, threshold 35 µg/m³ = EPA
+  unhealthy-for-sensitive-groups): accuracy (inflated by 98% clean-day prevalence — report
+  but never lead with it), F1, ROC-AUC (uses continuous prediction as score).
+- Leakage guards in tests: disjoint stations per fold asserted; canary test (station-ID
+  dummy feature scores ~0 under spatial CV, high under random split).
+
+---
+
+## 2. Experiment ladder (in chronological order)
+
+Held-out-station (spatial) R² is the headline; random-split R² in parentheses.
+
+| # | Experiment (run dir) | Data | Model | Spatial R² | Within-st R² | AUC(sp) | Verdict |
+|---|---|---|---|---|---|---|---|
+| 0 | `proto_image_only` | 63 patches, 10 stations | frozen+LGBM/RF | −0.11 | 0.11 | – | harness validation only |
+| 1 | `phase1_image_only` | L2A weekly medians, 2023–24 | frozen+LGBM/RF | **−0.10…0.00 (0.21–0.30)** | 0.03 | 0.75 | proposal config: no transferable signal |
+| 2 | `l2a_overpass` | + day-synced labels | frozen+LGBM | 0.04 (0.15) | 0.02 | 0.70 | sync alone can't rescue corrected imagery |
+| 3 | `l1c_weekly` | raw TOA, weekly medians | frozen+LGBM | −0.03…0.04 (0.24) | 0.04 | 0.67 | raw imagery alone doesn't rescue either |
+| 4 | `l1c_overpass` | raw TOA + day-sync | frozen+LGBM | 0.00 (0.15) | 0.02 | 0.70 | 2x2 complete: all four cells ≈ 0 |
+| 5 | `l1c_scene_frozen` | single scenes, scene-date labels, +2020 | frozen+LGBM | **0.15 (0.22)** | 0.22 | 0.83 | first real signal: compositing/mismatch/range were burying it |
+| 6 | `l1c_scenehour_frozen` | + hour-level sync | frozen+LGBM | **0.17 (0.33)** | 0.24 | 0.83 | every sync rung pays |
+| 7 | `finetune_l1c_scene` | same as 5 (subsample) | fine-tuned CNN | **0.36 (0.52)** | 0.40 | 0.95 | end-to-end learning is the biggest single lever |
+| 8 | `full_l1c_scenehour_frozen` | full 11.4k scenes | frozen+LGBM | 0.10 (0.22) | 0.16 | 0.78 | backfilled clean weeks dilute frozen-feature signal |
+| 9 | `full_finetune_l1c_scenehour` | full 11.4k, hour-sync | fine-tuned CNN | **0.36 (0.56)** | 0.40 | 0.91 | flagship baseline recipe |
+| 10 | `tuned_finetune_l1c_scenehour` | same, 24 epochs/patience 5/lr 2e-4 | fine-tuned CNN | **0.39 (0.53)** | 0.42 | 0.91 | **current best** — default was undertrained |
+| 11 | `allbands_finetune_l1c_scenehour` | 13 bands, tuned recipe | fine-tuned CNN (inflated conv) | 0.32 (**0.57**) | 0.34 | 0.88 | best memorization, worse generalization (see §4) |
+
+Full per-fold numbers incl. F1/AUC: `data/runs/consolidated_results.parquet`,
+summary CSV alongside.
+
+### The story in one table (thesis Fig/Tab candidate)
+| Design change | Spatial R² | Within-station R² |
+|---|---|---|
+| Proposal baseline (L2A weekly median, frozen CNN) | 0.00 | 0.03 |
+| + raw L1C (haze preserved) | −0.03 | 0.14* |
+| + single scenes + same-day labels + 2020 range | 0.15 | 0.22 |
+| + exact overpass-hour labels | 0.17 | 0.24 |
+| + CNN fine-tuned end-to-end (tuned) | **0.39** | **0.42** |
+(*within-station under random split; spatial within similar trend.)
+
+---
+
+## 3. Key findings & interpretations (discussion-chapter material)
+
+1. **The proposal's exact configuration has no transferable image signal.** A 2x2 factorial
+   {L2A, L1C} x {weekly, overpass-day} all scored spatial R² ≈ 0. Random-split scores of
+   0.2–0.3 in those same cells were pure station memorization — visible as high
+   between-station R² under random split collapsing to negative under spatial CV.
+2. **Three data pathologies were burying the signal** (each fixed, each quantified):
+   weekly median compositing smooths transient haze; the label averages days the satellite
+   never saw (r=0.889 weekly vs overpass-day); CA's PM range is mostly below visible-haze
+   levels (fixed by adding 2020 wildfire season). A brightness probe confirmed it: raw L1C
+   scene brightness vs same-station PM anomaly correlated only +0.07 before these fixes.
+3. **Frozen ImageNet features are structurally wrong for this task**: supervised ImageNet
+   training uses color/contrast augmentation, teaching invariance to exactly the visual
+   signature of haze. Fine-tuning end-to-end (no color jitter) was the largest single
+   improvement (0.17 -> 0.36).
+4. **Label-image synchronization is a quantifiable design axis nobody in the cited
+   literature measures**: weekly -> day -> hour each improved results; ~20% of label
+   variance per rung was mismatch noise.
+5. **What the model learned is the atmosphere, not the neighborhood**: within-station
+   (temporal) R² 0.42 vs between-station R² ≈ −0.06 under spatial CV. Photos see haze;
+   they do not rank unseen places by chronic exposure. (13-band input showed the first
+   positive between-station folds: +0.09/+0.14/+0.26 — spectral information may help the
+   place axis; see §4.)
+6. **Exceedance detection is the strong suit**: AUC 0.91 (tuned model, unseen stations)
+   for PM2.5 > 35 µg/m³. Framing: satellite imagery is a good unhealthy-air detector and a
+   modest concentration estimator. Accuracy (~98%) is a vanity metric at 2% prevalence.
+7. **The honest-evaluation tax is ~0.15–0.2 R²** (0.53–0.57 random vs 0.32–0.39 spatial on
+   identical models/data). Most published numbers in this space are the former kind.
+8. **13 bands ≠ automatic win**: all-bands random split rose to 0.57 while spatial fell to
+   0.32 — more channels gave more capacity to fingerprint stations, not more atmospheric
+   generalization, with ImageNet-inflated initialization. Consistent with Scheibenreif et
+   al.: domain (BigEarthNet/SSL4EO) pretraining beats ImageNet for S2 tasks. Also 3/5
+   spatial folds early-stopped at epochs 7–9 (noisy val curve) = undertrained.
+
+### Literature diff that motivated the fixes (lit-review chapter material)
+- Zheng et al. 2020 (Atmos. Env.): PlanetScope 3 m daily single scenes, VGG16 fine-tuned
+  end-to-end, + meteorology in RF, Beijing (PM tens–hundreds µg/m³), held-out samples
+  (stations shared). Our diffs: composites (fixed), frozen CNN (fixed), low-PM region
+  (partially fixed via 2020), no meteorology (deliberate scope), spatial CV (kept — rigor).
+- Jiang et al. 2022 (Sci. Remote Sens.): plain supervised CNNs capture spatial variation
+  poorly; needed contrastive pretraining (Delhi/Beijing). Matches our between-station result.
+- DeepAir, Guo et al. 2025 (MLST): California; the CNN ingests STATIC data (elevation,
+  land use); dynamic signal comes from AOD + meteorology + wildfire model + neighboring
+  stations. I.e., the successful CA paper never sourced temporal signal from optical imagery.
+- Mazza et al. 2025 (TGRS): Sentinel-5P radiances = atmospheric sounding, different physics.
+- TOA-vs-surface-reflectance line (Env. Pollution 2022, ultrahigh-res TOA ML): published
+  support for using L1C directly.
+- AQNet, Rowley & Karakus 2023 (RSE): 12-band S2 1.2 km patches + S5P + tabular,
+  MobileNetV3, R²≈0.6 random split; backbone choice mattered little (0.579–0.596).
+
+---
+
+## 4. Engineering incidents worth a methods footnote
+- macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
+  spawn-context workers + fold-level resume from saved predictions. Single-threaded
+  loading of 13-band patches starves the GPU (~3x slowdown) — parallel loading matters.
+- GEE empty-collection weeks surfaced as "Image.unmask ... has no bands" errors; classified
+  as `no_images` terminal status so resume doesn't retry forever.
+- EPA FEM negative values (instrument noise) crash log-transforms; clip at source.
+- All downloads resumable via manifest keyed (station, week, product, mode, bands).
+
+## 5. Reproduction map
+```
+scripts/00_check_env.py                # env + GEE auth (project pm25-prediction-505417)
+scripts/01_build_labels.py             # EPA daily -> stations + labels_{daily,weekly}
+scripts/02_download_patches.py         # --product l2a|l1c --mode median|single --bands rgb|all
+scripts/03_extract_embeddings.py       # --product --mode ; frozen ResNet-18 512-d
+scripts/04_assemble_dataset.py         # --labels weekly|overpass|scene|scenehour
+scripts/05_train_eval.py               # frozen LGBM/RF x splits x seeds
+scripts/06_overpass_labels.py          # S2 pass dates -> labels_overpass
+scripts/07_finetune.py                 # end-to-end CNN; --bands all; --epochs/--patience/--lr/--workers
+scripts/08_hour_labels.py              # EPA hourly + exact pass times -> labels_scenehour
+tests/  (19 green)                     # aggregation, masks, split-leakage canary, metrics
+```
+Current best model recipe: `07_finetune.py --labels scenehour --epochs 24 --patience 5 --lr 2e-4`
+(RGB, L1C single scenes) -> spatial R² 0.387 / within 0.419 / AUC 0.910.
+
+## 6. Open items
+- Ensemble the 5 tuned-RGB fold models (expected +0.02–0.04, free).
+- SSL4EO-S12 domain-pretrained backbone for the 13-band input (the principled fix for §3.8).
+- Phase 2 / RQ1: + lat/lon + week sin/cos + fused model; temporal split (train 2023 test
+  2024) already implemented in splits.py.
+- Phase 3 / RQ2: daily/weekly/monthly label aggregation formal runs (sync ladder already
+  answers much of it).
+- Thesis figures: ladder chart, pred-vs-true scatters, example smoke patches, station map.
