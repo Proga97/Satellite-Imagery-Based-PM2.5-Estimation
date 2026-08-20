@@ -30,7 +30,11 @@ from thesis.models.splits import random_split, region_split, spatial_folds
 
 
 def iter_splits(table: pd.DataFrame, name: str, seed: int):
-    if name == "random":
+    if name == "final":
+        # train on ALL stations (no test holdout): the deployable model.
+        # test set = empty; early stopping still uses a station-aware val carve-out.
+        yield np.arange(len(table)), np.array([], dtype=int)
+    elif name == "random":
         yield from random_split(table, seed=seed)
     elif name == "spatial":
         yield from spatial_folds(table)
@@ -252,6 +256,12 @@ def main() -> int:
             model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
                               args.epochs, args.lr, args.patience, args.min_epochs)
+            if split_name == "final":
+                out_path = run_dir / f"model_final_s{args.seed}.pt"
+                torch.save({"state_dict": model.state_dict(),
+                            "recipe": vars(args)}, out_path)
+                print(f"saved final model weights -> {out_path}")
+                continue
             y_pred = predict(model, dl(te, False), device)
             m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
             m.update(split=split_name, fold=fold, n_test=len(te))
