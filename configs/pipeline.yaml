@@ -1,5 +1,5 @@
 # Single source of truth for pipeline knobs. Paths are relative to repo root.
-regions: [california, texas, newyork]
+regions: [california, texas, newyork, washington, illinois]
 # 2020 included for wildfire-season high-PM samples (visible-haze range)
 years: [2020, 2023, 2024]
 

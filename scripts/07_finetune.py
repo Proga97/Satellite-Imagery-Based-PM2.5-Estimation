@@ -95,11 +95,13 @@ def make_model(in_ch: int = 3) -> nn.Module:
     return m
 
 
-def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3):
+def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
+              min_epochs=12):
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     loss_fn = nn.HuberLoss()
     best_val, best_state, patience = float("inf"), None, 0
+    va_hist: list[float] = []
     for ep in range(epochs):
         model.train()
         tr_loss = 0.0
@@ -119,13 +121,19 @@ def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3):
                 va_loss += float(loss_fn(model(x).squeeze(-1), y)) * len(y)
                 n += len(y)
         va_loss /= max(n, 1)
-        print(f"  epoch {ep+1}/{epochs}: train {tr_loss/len(train_dl.dataset):.4f} val {va_loss:.4f}")
-        if va_loss < best_val - 1e-4:
-            best_val, patience = va_loss, 0
+        va_hist.append(va_loss)
+        # smooth over the last 2 epochs so one noisy epoch can't drive decisions
+        va_smooth = sum(va_hist[-2:]) / len(va_hist[-2:])
+        print(f"  epoch {ep+1}/{epochs}: train {tr_loss/len(train_dl.dataset):.4f} "
+              f"val {va_loss:.4f} (smooth {va_smooth:.4f})")
+        if va_smooth < best_val - 1e-4:
+            best_val, patience = va_smooth, 0
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         else:
             patience += 1
-            if patience >= max_patience:
+            # never stop before min_epochs: unlucky early plateaus were producing
+            # undertrained folds (the worst spatial folds all stopped at epoch 7-11)
+            if patience >= max_patience and (ep + 1) >= min_epochs:
                 print("  early stop")
                 break
     if best_state:
@@ -153,6 +161,8 @@ def main() -> int:
     parser.add_argument("--splits", nargs="+", default=["random", "spatial"])
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--min-epochs", type=int, default=12,
+                        help="no early stop before this epoch (undertrained-fold guard)")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--workers", type=int, default=4,
@@ -241,7 +251,7 @@ def main() -> int:
             in_ch = 3 if band_stats is None else len(band_stats[0])
             model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
-                              args.epochs, args.lr, args.patience)
+                              args.epochs, args.lr, args.patience, args.min_epochs)
             y_pred = predict(model, dl(te, False), device)
             m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
             m.update(split=split_name, fold=fold, n_test=len(te))
