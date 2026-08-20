@@ -27,6 +27,7 @@ def main() -> int:
         manifest = pd.read_parquet(cfg.path("manifest"))
         scenes = manifest[(manifest["product"] == product)
                           & (manifest.get("mode", "median") == "single")
+                          & (manifest.get("bands", "rgb").fillna("rgb") == "rgb")
                           & (manifest["status"] == "ok")
                           & (manifest["scene_date"] != "")]
         hour_labels = pd.read_parquet(cfg.path("labels_scenehour"))
@@ -43,6 +44,7 @@ def main() -> int:
         manifest = pd.read_parquet(cfg.path("manifest"))
         scenes = manifest[(manifest["product"] == product)
                           & (manifest.get("mode", "median") == "single")
+                          & (manifest.get("bands", "rgb").fillna("rgb") == "rgb")
                           & (manifest["status"] == "ok")
                           & (manifest["scene_date"] != "")]
         daily = pd.read_parquet(cfg.path("labels_daily"))
