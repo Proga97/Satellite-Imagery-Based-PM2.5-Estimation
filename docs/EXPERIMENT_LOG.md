@@ -235,6 +235,22 @@ group distribution shift, not a training failure). Within-station 0.358.
 | Unseen state, 2-climate training (NY) | 0.23 |
 | Unseen state, 1-climate training | ~0.04 |
 
+## 3e. Five-state model + early-stop stabilization (`allstates_finetune`, Aug 20 2026)
+
+Washington (20 stations) + Illinois (19) added -> 198 stations / 19,600 hour-synced scenes
+across 5 climates. Training stabilized: --min-epochs 12 (no stop before epoch 12) and
+2-epoch smoothed validation for both stopping and checkpoint selection — motivated by the
+worst previous folds all early-stopping at epochs 7–11 (incl. a 0.01 collapse).
+
+Results (all states trained together, per user direction — no state-holdout in this run):
+- spatial 5-fold: **R² 0.382**, within-station 0.428, AUC 0.931, folds 0.41/0.38/0.47/0.37/0.29
+  — **no collapsed folds** (worst 0.29 vs 0.01 pre-stabilization); fold 3 hit 0.47 with
+  between-station +0.43 (5-climate data teaching place-ranking).
+- random reference: R² 0.404 (spatial ≈ random now — memorization headroom nearly gone at
+  198 stations; the honest and lenient numbers are converging, itself a finding).
+- New best honest image-only result: **0.382 across five climates** (prev best 0.387 on
+  CA-only; equal performance on a 5x more diverse domain = a strictly stronger model).
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
