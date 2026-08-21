@@ -322,6 +322,28 @@ Transfer learning adapts in ~5–15 epochs; an "epoch" on 19k scenes = 2.5x the 
 steps of earlier runs; post-adaptation improvements are station memorization, correctly
 rejected by smoothed early stopping (train loss falls while val rises).
 
+## 3h. Full-history dataset 2018–2025 (`fullhistory_holdout`, Aug 21 2026)
+
+Years extended to 2018–2025 (Camp Fire, Dixie/Caldor eras + 2025). 200 stations,
+65,389 station-weeks; 219,724 S2 acquisitions; 125,025 hour-synced labels; 81,373 scenes
+downloaded (43k too-cloudy rejected); cleaning kept **65,643** (removed: 11,028 pm<2.5,
+3,359 cloud-low-label, 685 single-hour, 658 tile-edge). Train 45,709 / val 7,253 /
+test 12,681 at 39 unseen stations. Best epoch 13, stop 18.
+Weights: `data/runs/fullhistory_holdout/model_holdout_s0.pt`.
+
+Headline: R² 0.281 / within 0.289 / between 0.293 / AUC 0.903 — uniform across all 8 years
+(0.20–0.32) and all 5 states (0.19–0.35, incl. NY positive at last).
+
+**Head-to-head vs the 3-year model — same 4,630 scenes, same 37 never-seen-by-either
+stations:** 3-yr: r2 0.356 / within 0.366 / between 0.103 / auc 0.913.
+8-yr: r2 0.281 / within 0.289 / between **0.177** / auc 0.903.
+**Finding: more historical data traded per-scene temporal sharpness for spatial/temporal
+robustness** (better place-ranking, no weak state or year). Hypothesized causes: 8 years of
+sensor/processing drift + sparser old networks add label noise; and ResNet-18 capacity is
+now likely the bottleneck at 65k samples (it was right-sized at 20k) — motivates a
+ResNet-34/50 run as the next architecture experiment. Both models retained; the 3-year
+model remains the per-scene champion, the 8-year the robustness champion.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
