@@ -1,7 +1,8 @@
 # Single source of truth for pipeline knobs. Paths are relative to repo root.
 regions: [california, texas, newyork, washington, illinois]
-# full usable Sentinel-2 era: 2018 (Camp Fire) through 2025
-years: [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+# 2020-2025: modern-era data only (2018-19 removed - sensor/network drift added label
+# noise and diluted the recent-era distribution; see EXPERIMENT_LOG 3h/3i)
+years: [2020, 2021, 2022, 2023, 2024, 2025]
 
 labels:
   parameter_code: 88101          # PM2.5 FRM/FEM mass

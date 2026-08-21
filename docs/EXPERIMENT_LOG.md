@@ -344,6 +344,28 @@ now likely the bottleneck at 65k samples (it was right-sized at 20k) — motivat
 ResNet-34/50 run as the next architecture experiment. Both models retained; the 3-year
 model remains the per-scene champion, the 8-year the robustness champion.
 
+## 3i. 2018–2019 deleted; modern-era model 2020–2025 (`modern_era_holdout`, Aug 21 2026)
+
+Per user direction, 2018–2019 removed completely (14,139 patches, 4 EPA zips, manifest+
+pass-time rows purged; re-downloadable if ever needed). Rebuild: 102,489 hour labels ->
+54,347 clean scenes / 199 stations. Trained with the standard recipe (best ep 7, stop 12).
+Own-holdout: r2 0.262 / within 0.274 / AUC ~0.90.
+
+**Canonical-exam standings** (the 4,630-scene / 37-station benchmark all holdout models
+are scored on; exam scenes are 2020/23/24):
+| model (training years) | r2 | within | between | auc |
+|---|---|---|---|---|
+| 3-year (2020,23,24) | **0.356** | **0.366** | 0.103 | **0.913** |
+| 8-year (2018–25) | 0.281 | 0.289 | **0.177** | 0.903 |
+| 6-year modern (2020–25) | 0.253 | 0.269 | −0.026 | 0.894 |
+
+**Finding: deleting 2018–19 did NOT recover sharpness — the old-years-noise hypothesis is
+refuted.** The pattern across all three models is era-matching: the 3-year model trains
+exclusively on the exam's own years and wins on them; adding ANY other years (old or
+recent) dilutes per-scene sharpness at fixed ResNet-18 capacity. Remaining explanations:
+model capacity (top candidate: ResNet-34/50 at 54k samples) and simple test-era match.
+Caveat: 0.253 vs 0.281 is within fold-variance; the 3-yr gap (~0.08+) is not.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
