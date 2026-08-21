@@ -410,6 +410,36 @@ the models differ at the extremes (3-yr predicts ~44 avg on 55+ days vs modern's
 and slightly in detection. Regression-to-the-middle remains the dominant error mode;
 weighted sampling of high-PM scenes is the targeted fix.
 
+## 3k. Weighted sampling for rare high-PM scenes (Aug 21 2026)
+
+Motivation: only 700 of 43,946 training scenes exceed 35 µg/m³ -> the loss barely feels
+smoke errors -> systematic peak undershoot (55+ bias −73). WeightedRandomSampler:
+scenes >35 drawn Nx, 20–35 at N/2. Identical data/split/recipe; three arms on the
+identical 10,401-scene test set:
+
+| bucket (bias/MAE) | baseline | **5x** | 10x |
+|---|---|---|---|
+| 2.5–6 | +3.8/3.8 | +3.7/3.8 | +3.9/4.1 |
+| 6–12 | +0.6/2.5 | +1.0/3.5 | +1.2/3.8 |
+| 12–35 | −5.7/6.3 | −3.8/6.8 | −3.6/7.2 |
+| 35–55 | −22.3/22.3 | **−11.7/19.1** | −15.4/17.7 |
+| 55+ | −72.9/72.9 | **−49.5/50.0** | −49.6/53.1 |
+
+| overall | baseline | **5x** | 10x |
+|---|---|---|---|
+| R² | 0.262 | **0.306** | 0.201 |
+| within-station | 0.274 | **0.350** | 0.313 |
+| MAE | **4.48** | 4.83 | 5.13 |
+| AUC | 0.896 | **0.912** | 0.897 |
+| F1 | 0.194 | **0.439** | 0.337 |
+
+**5x is the near-dominant operating point**: best overall R², best within-station, best
+AUC, F1 more than doubled, smoke bias cut ~1/3 — at the cost of +0.35 MAE on clean days
+(6–12 bucket 2.5->3.5). 10x over-rotated (clean-day noise ate the gains). **5x oversampling
+becomes the standard recipe.** Weights: `data/runs/weighted5_holdout/model_holdout_s0.pt`.
+Note: unweighted val loss initially favored smoke-naive checkpoints in the 10x arm
+(ep-1 best until ep 10); at 5x the criterion mismatch was mild (best ep 7 of 13).
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
