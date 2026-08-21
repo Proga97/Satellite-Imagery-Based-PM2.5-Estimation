@@ -366,6 +366,50 @@ recent) dilutes per-scene sharpness at fixed ResNet-18 capacity. Remaining expla
 model capacity (top candidate: ResNet-34/50 at 54k samples) and simple test-era match.
 Caveat: 0.253 vs 0.281 is within fold-variance; the 3-yr gap (~0.08+) is not.
 
+## 3j. Full metric breakdowns — the two headline models, side by side
+
+All numbers vs actual EPA labels, each model on its own held-out-station exam.
+Regenerable from `data/runs/{allscenes_holdout,modern_era_holdout}/preds_holdout_f0.parquet`.
+
+### Overall
+| metric | 3-yr model (4,630 scenes / 37 st) | modern 2020-25 (10,401 scenes / 38 st) |
+|---|---|---|
+| R² | 0.356 | 0.262 |
+| within-station R² | 0.366 | 0.274 |
+| between-station R² | 0.103 | 0.105 |
+| RMSE | 9.5 | 8.6 |
+| MAE | 4.6 | 4.5 |
+| median abs miss | 3.1 | 3.1 |
+| within ±3 / ±5 of truth | 49% / 71% | 49% / 71% |
+| overall bias | −0.6 | −0.4 |
+| AUC / F1 / accuracy* | 0.913 / 0.355 / 0.983 | 0.896 / 0.194 / 0.984 |
+(*accuracy inflated by ~98% clean-day prevalence — never lead with it.)
+
+### Per state (unseen stations; stations / R² / MAE / AUC)
+| state | 3-yr model | modern model |
+|---|---|---|
+| Washington | 4 st · **0.68** · 2.8 · 1.00 | 4 st · 0.43 · 3.5 · 0.98 |
+| Illinois | 3 st · 0.57 · 3.8 · 0.99 | 3 st · 0.15 · 3.8 · 0.88 |
+| California | 20 st · 0.33 · 5.3 · 0.91 | 20 st · 0.25 · 5.0 · 0.89 |
+| Texas | 9 st · 0.27 · 4.0 · 0.90 | 9 st · 0.21 · 4.1 · 0.87 |
+| New York | 1 st (n=32) · n/a · 4.9 · – | 2 st · 0.29 · 3.7 · 0.96 |
+(3-yr note: WA −2.7 → +0.68 across two runs — the every-pass harvest + cleaning fixed the
+formerly-collapsing region.)
+
+### Error by true pollution level (scenes / typical miss / bias; true→pred avg)
+| truth bucket | 3-yr model | modern model |
+|---|---|---|
+| very clean 2.5–6 | 1,680 · 3.7 · +3.6 | 3,752 · 3.8 · +3.8 (4.3→8.1) |
+| clean 6–12 | 1,859 · **2.5** · +0.2 | 4,121 · **2.5** · +0.6 (8.8→9.3) |
+| moderate 12–35 | 1,002 · 6.9 · −5.9 | 2,352 · 6.3 · −5.7 (17.5→11.8) |
+| USG 35–55 | 53 · 23.0 · −18 | 112 · 22.3 · −22 (41.2→18.9) |
+| unhealthy 55+ | 36 · 68.5 · −68 | 64 · 72.9 · −73 (98.1→25.3) |
+
+Reading: day-to-day behavior is identical (median miss 3.1, 49%/71% hit-rates both);
+the models differ at the extremes (3-yr predicts ~44 avg on 55+ days vs modern's ~25)
+and slightly in detection. Regression-to-the-middle remains the dominant error mode;
+weighted sampling of high-PM scenes is the targeted fix.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
