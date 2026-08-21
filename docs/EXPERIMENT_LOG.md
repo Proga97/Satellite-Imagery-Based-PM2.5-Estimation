@@ -268,6 +268,60 @@ Per user direction, the simple standard protocol: one split, 80% of stations tra
   `holdout80_20_stratified/model_holdout_s0.pt` (158 stations, honest 20% exam attached).
   NOTE: not in git — back up separately.
 
+## 3g. Every-pass harvest + cleaning + current best model (`allscenes_holdout`, Aug 20 2026)
+
+**Every-pass "scene" mode**: one sample per labeled acquisition (not one per week) —
+50k jobs -> 32,442 scenes downloaded (17,415 rejected too-cloudy at download).
+**Cleaning rules (user-approved)**: R1 drop valid_fraction<0.5 AND pm<=20 (cloud, not smoke;
+1,333), R2 drop single-hour labels (299), R3 drop >25% zero pixels (293),
+R4 drop pm25 < 2.5 (near noise floor; 4,522). Kept **25,995** scenes / 198 stations.
+Note R4 changes the R² denominator — cross-run comparisons must re-apply the floor.
+
+**Training** (stratified-80/20 station holdout; 18,937 train / 2,428 val / 4,630 test at
+37 unseen stations; tuned+stabilized recipe): best at epoch 5, stop at 13.
+Weights: `data/runs/allscenes_holdout/model_holdout_s0.pt`.
+
+### Full metric stack (all vs actual EPA labels)
+| metric | value | | metric | value |
+|---|---|---|---|---|
+| R² | 0.356 | | AUC (>35) | 0.913 |
+| within-station R² | 0.366 | | F1 | 0.355 |
+| between-station R² | 0.103 | | accuracy | 0.983 (2% prevalence — vanity) |
+| RMSE | 9.5 | | median abs err | 3.1 µg/m³ |
+| MAE | 4.6 | | within ±5 of truth | 71% of scenes |
+| overall bias | −0.6 | | within ±3 | 49% |
+
+### Fair comparison (20 stations unseen by BOTH models, pm>=2.5 both)
+| model | R² | within | AUC |
+|---|---|---|---|
+| previous (1 scene/week data) | 0.230 | 0.329 | 0.976 |
+| **full harvest + cleaning** | **0.374** | **0.395** | 0.941 |
+Headline R² dropped (0.44->0.36) only because the exam changed (different stations, floor
+applied); head-to-head the new model wins decisively.
+
+### Per state (unseen stations)
+CA 0.33 (20 st) · TX 0.27 (9) · IL 0.57 (3) · **WA 0.68 (4 — was −2.7 two runs ago; the
+harvest+cleaning fixed it)** · NY not scorable (1 station, 32 scenes).
+
+### Predicted vs true averages (calibration)
+Overall 10.2 true vs 9.6 predicted. Per state within ±1 except NY (4.8 true vs 9.7 pred, n=32).
+By truth bucket — the regression-to-the-middle signature:
+2.5–6: 4.3->7.9 (pulls up) · 6–12: 8.8->9.0 ✓ · 12–35: 17.6->11.7 · 35–55: 41->23 ·
+55+: 112->44 (detects events, undershoots peaks ~2.5x). Chronically-polluted small towns
+underread (Hanford 16.5->10.9, San Pablo 14.5->8.8). Clearest remaining lever: loss
+weighting on rare high-PM samples to stretch the top end.
+
+### Fold-vs-fold lesson (from allstates run, retained for methods chapter)
+The five CV models are near-interchangeable in skill (within-station 0.38–0.48); the R²
+spread 0.29–0.47 is mostly test-group composition (station-mean spread, extreme events,
+region mix). An unstratified single 80/20 collapsed to 0.03 by starving WA/NY of training
+stations; stratification fixed it. Report mean ± spread, never a single lucky fold.
+
+### Why training converges fast (methods note)
+Transfer learning adapts in ~5–15 epochs; an "epoch" on 19k scenes = 2.5x the gradient
+steps of earlier runs; post-adaptation improvements are station memorization, correctly
+rejected by smoothed early stopping (train loss falls while val rises).
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
