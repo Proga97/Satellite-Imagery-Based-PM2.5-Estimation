@@ -11,7 +11,7 @@ labels:
   coverage_years: [2023, 2024]   # coverage judged on these years only (2020 is bonus data)
 
 patches:
-  product: l2a                   # l2a | l1c (config switch, same code path)
+  product: l1c                   # l2a | l1c (config switch, same code path); l1c = project standard
   collections:
     l2a: COPERNICUS/S2_SR_HARMONIZED
     l1c: COPERNICUS/S2_HARMONIZED

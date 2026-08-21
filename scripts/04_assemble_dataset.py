@@ -38,6 +38,15 @@ def main() -> int:
         labels = scenes[["station_id", "week_start", "scene_date"]].merge(
             hour_labels[["station_id", "scene_date", "pm25"]],
             on=["station_id", "scene_date"], how="inner")
+        keep_path = cfg.path("labels_scenehour").with_name("scene_keep.parquet")
+        if args.mode == "scene" and keep_path.exists():
+            keep = pd.read_parquet(keep_path)
+            keep = keep[keep["keep"]]
+            keep["scene_date"] = pd.to_datetime(keep["key"])
+            before = len(labels)
+            labels = labels.merge(keep[["station_id", "scene_date"]],
+                                  on=["station_id", "scene_date"], how="inner")
+            print(f"quality filter: {before} -> {len(labels)} scenes")
         labels = labels[["station_id", "week_start", "pm25"]]
         print(f"scenehour labels: {len(scenes)} scenes, {len(labels)} with overpass-hour value")
         emb_name = f"embeddings_{product}_{'single' if args.mode == 'single' else 'scenes'}.parquet"
