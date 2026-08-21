@@ -184,6 +184,9 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--workers", type=int, default=4,
                         help="DataLoader workers; uses macOS-safe spawn context (0 = in-process)")
+    parser.add_argument("--oversample-high", type=float, default=1.0,
+                        help=">1 enables WeightedRandomSampler: scenes >35 ug/m3 get this "
+                             "weight, 20-35 get half of it, rest 1.0")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -262,10 +265,21 @@ def main() -> int:
             loader_kw = dict(batch_size=args.batch_size, num_workers=args.workers)
             if args.workers > 0:
                 loader_kw.update(multiprocessing_context="spawn", persistent_workers=True)
-            dl = lambda rows, train: DataLoader(
-                PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
-                             band_stats=band_stats),
-                shuffle=train, **loader_kw)
+            def dl(rows, train):
+                ds = PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
+                                  band_stats=band_stats)
+                if train and args.oversample_high > 1.0:
+                    import numpy as _np
+                    from torch.utils.data import WeightedRandomSampler
+                    pm = rows["pm25"].to_numpy()
+                    w = _np.ones(len(pm))
+                    w[pm > 20] = args.oversample_high / 2.0
+                    w[pm > 35] = args.oversample_high
+                    sampler = WeightedRandomSampler(
+                        torch.as_tensor(w, dtype=torch.double), num_samples=len(ds),
+                        replacement=True)
+                    return DataLoader(ds, sampler=sampler, **loader_kw)
+                return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
             model = make_model(in_ch).to(device)
             model = train_one(model, dl(tr2, True), dl(va, False), device,
