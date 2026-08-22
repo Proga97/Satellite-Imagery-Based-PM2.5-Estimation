@@ -521,6 +521,28 @@ and clean-specialist regime (--train-max-pm) is written and committed but NOT tr
   between-station ≈ 0.1, the last big unclaimed axis), post-hoc calibration on the
   specialist, ResNet-50 capacity.
 
+## 3n. Three-stage system executed (Aug 22 2026) — FINAL PROJECT CHAMPION
+
+The §3m design was run after all. Components: dedicated classifier (BCE pos-weight 13.3)
+scored **AUC 0.824 < regressor-router's 0.91 — binary training discards ordinal signal and
+overfits 2,651 positives; router stays a regressor** (finding #1). Clean specialist
+(pm<=20, 40,835 train scenes; standalone full-exam r2 0.073, by design). Smoke specialist
+from §3l. Composition sweep on the identical 10,401-scene exam:
+
+| system | r2 | within | mae | f1 | auc | 55+ bias | clean 6-12 mae |
+|---|---|---|---|---|---|---|---|
+| 2-stage hard @20 (prev champ) | 0.320 | 0.331 | 4.52 | 0.385 | 0.909 | −44.9 | 2.80 |
+| 3-stage hard @15/20/25 | 0.270–0.297 | – | – | – | – | −42..−48 | 2.5–3.2 |
+| **3-stage SOFT blend s=3** | **0.336** | **0.353** | **4.51** | **0.393** | 0.908 | −45.1 | 2.81 |
+| 2-stage soft s=3 | 0.329 | 0.346 | 4.61 | 0.388 | 0.912 | −44.2 | 3.01 |
+
+**Final champion: 3-stage soft blend — r2 0.336**, best of all ~40 experiments, dominating
+the 2-stage on nearly every axis. final = (1−p)·clean + p·smoke with
+p = sigmoid((router−20)/3). Findings: (2) soft blending worth +0.04 r2 over hard switching
+(boundary-cliff prediction confirmed); (3) the clean specialist adds value INSIDE the blend
+(0.336 vs 0.329) though near-ceiling alone. Deployment = 3 saved models + 3 lines of math:
+weighteddamped (router), specialist_clean, specialist_high.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
