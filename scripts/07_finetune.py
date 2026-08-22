@@ -187,6 +187,9 @@ def main() -> int:
     parser.add_argument("--oversample-high", type=float, default=1.0,
                         help=">1 enables WeightedRandomSampler: scenes >35 ug/m3 get this "
                              "weight, 20-35 get half of it, rest 1.0")
+    parser.add_argument("--bucket-weights", type=float, nargs=5, default=None,
+                        metavar=("W_2.5-6", "W_6-12", "W_12-35", "W_35-55", "W_55+"),
+                        help="per-bucket sampling weights (overrides --oversample-high)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -268,13 +271,19 @@ def main() -> int:
             def dl(rows, train):
                 ds = PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
                                   band_stats=band_stats)
-                if train and args.oversample_high > 1.0:
+                if train and (args.oversample_high > 1.0 or args.bucket_weights):
                     import numpy as _np
                     from torch.utils.data import WeightedRandomSampler
                     pm = rows["pm25"].to_numpy()
-                    w = _np.ones(len(pm))
-                    w[pm > 20] = args.oversample_high / 2.0
-                    w[pm > 35] = args.oversample_high
+                    if args.bucket_weights:
+                        edges = [-1, 6, 12, 35, 55, 1e9]
+                        w = _np.ones(len(pm))
+                        for i in range(5):
+                            w[(pm > edges[i]) & (pm <= edges[i+1])] = args.bucket_weights[i]
+                    else:
+                        w = _np.ones(len(pm))
+                        w[pm > 20] = args.oversample_high / 2.0
+                        w[pm > 35] = args.oversample_high
                     sampler = WeightedRandomSampler(
                         torch.as_tensor(w, dtype=torch.double), num_samples=len(ds),
                         replacement=True)
