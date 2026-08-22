@@ -60,15 +60,26 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
+CTX_COLS = ["lat", "lon", "elevation_m", "temp_c", "rh", "wind_speed", "precip_mm",
+            "pressure_hpa", "sun_elev_deg", "doy_sin", "doy_cos"]
+
+
 class PatchDataset(Dataset):
     def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool,
-                 band_stats: tuple | None = None, classify_threshold: float | None = None):
+                 band_stats: tuple | None = None, classify_threshold: float | None = None,
+                 ctx_stats: tuple | None = None):
         self.rows = rows.reset_index(drop=True)
         self.root = patch_root
         self.gain = gain
         self.train = train
         self.band_stats = band_stats  # (mean[C], std[C]) in reflectance units, or None for RGB path
         self.classify_threshold = classify_threshold
+        self.ctx_stats = ctx_stats
+        if ctx_stats is not None:
+            cm, cs = ctx_stats
+            self.ctx = ((self.rows[CTX_COLS].to_numpy(dtype=np.float32) - cm) / cs)
+        else:
+            self.ctx = np.zeros((len(self.rows), 0), dtype=np.float32)
 
     def __len__(self):
         return len(self.rows)
@@ -98,7 +109,38 @@ class PatchDataset(Dataset):
         else:
             # log1p target: PM spans 0-466 ug/m3; raw MSE is dominated by smoke days
             y = float(np.log1p(max(float(r["pm25"]), 0.0)))
-        return img, torch.tensor(y, dtype=torch.float32)
+        return img, torch.from_numpy(self.ctx[i]), torch.tensor(y, dtype=torch.float32)
+
+
+class FusedNet(nn.Module):
+    """ResNet-18 backbone + context fusion (concat at head, or late FiLM)."""
+    def __init__(self, backbone: nn.Module, n_ctx: int, fusion: str):
+        super().__init__()
+        self.backbone = backbone          # fc already Identity
+        self.n_ctx = n_ctx
+        self.fusion = fusion
+        if n_ctx == 0:
+            self.head = nn.Linear(512, 1)
+        elif fusion == "concat":
+            self.ctx_mlp = nn.Sequential(nn.Linear(n_ctx, 64), nn.ReLU(),
+                                         nn.Linear(64, 64), nn.ReLU())
+            self.head = nn.Sequential(nn.Linear(512 + 64, 128), nn.ReLU(),
+                                      nn.Linear(128, 1))
+        else:  # film: context produces per-feature scale+shift for the 512-d features
+            self.film = nn.Sequential(nn.Linear(n_ctx, 128), nn.ReLU(),
+                                      nn.Linear(128, 1024))
+            self.head = nn.Sequential(nn.Linear(512, 128), nn.ReLU(),
+                                      nn.Linear(128, 1))
+
+    def forward(self, x, ctx):
+        f = self.backbone(x)
+        if self.n_ctx == 0:
+            return self.head(f)
+        if self.fusion == "concat":
+            return self.head(torch.cat([f, self.ctx_mlp(ctx)], dim=1))
+        gb = self.film(ctx)
+        gamma, beta = gb[:, :512], gb[:, 512:]
+        return self.head(f * (1 + gamma) + beta)
 
 
 def make_model(in_ch: int = 3) -> nn.Module:
@@ -116,6 +158,13 @@ def make_model(in_ch: int = 3) -> nn.Module:
     return m
 
 
+def make_fused(in_ch: int, n_ctx: int, fusion: str) -> nn.Module:
+    from torchvision.models import resnet18, ResNet18_Weights
+    bb = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    bb.fc = nn.Identity()
+    return FusedNet(bb, n_ctx, fusion)
+
+
 def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
               min_epochs=12, loss_fn=None):
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -126,10 +175,10 @@ def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
     for ep in range(epochs):
         model.train()
         tr_loss = 0.0
-        for x, y in train_dl:
-            x, y = x.to(device), y.to(device)
+        for x, cx, y in train_dl:
+            x, cx, y = x.to(device), cx.to(device), y.to(device)
             opt.zero_grad()
-            loss = loss_fn(model(x).squeeze(-1), y)
+            loss = loss_fn(model(x, cx).squeeze(-1), y)
             loss.backward()
             opt.step()
             tr_loss += float(loss) * len(y)
@@ -137,9 +186,9 @@ def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
         model.eval()
         va_loss, n = 0.0, 0
         with torch.no_grad():
-            for x, y in val_dl:
-                x, y = x.to(device), y.to(device)
-                va_loss += float(loss_fn(model(x).squeeze(-1), y)) * len(y)
+            for x, cx, y in val_dl:
+                x, cx, y = x.to(device), cx.to(device), y.to(device)
+                va_loss += float(loss_fn(model(x, cx).squeeze(-1), y)) * len(y)
                 n += len(y)
         va_loss /= max(n, 1)
         va_hist.append(va_loss)
@@ -166,8 +215,8 @@ def predict(model, dl, device):
     model.eval()
     preds = []
     with torch.no_grad():
-        for x, _ in dl:
-            preds.append(model(x.to(device)).squeeze(-1).cpu().numpy())
+        for x, cx, _ in dl:
+            preds.append(model(x.to(device), cx.to(device)).squeeze(-1).cpu().numpy())
     return np.expm1(np.concatenate(preds))
 
 
@@ -194,6 +243,10 @@ def main() -> int:
     parser.add_argument("--bucket-weights", type=float, nargs=5, default=None,
                         metavar=("W_2.5-6", "W_6-12", "W_12-35", "W_35-55", "W_55+"),
                         help="per-bucket sampling weights (overrides --oversample-high)")
+    parser.add_argument("--context", action="store_true",
+                        help="fuse 11 context features (met/elev/sun/season/latlon)")
+    parser.add_argument("--fusion", choices=["concat", "film"], default="concat",
+                        help="context fusion: concat at head, or FiLM modulation of features")
     parser.add_argument("--task", choices=["regress", "classify"], default="regress",
                         help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
     parser.add_argument("--classify-threshold", type=float, default=20.0)
@@ -213,6 +266,14 @@ def main() -> int:
     # only need keys + label (+ region for the region split); images load from disk
     keep = ["station_id", "week_start", "pm25"] + (["region"] if "region" in table else [])
     table = table[keep].copy()
+    if args.context:
+        ctx = pd.read_parquet(cfg.path("labels_scenehour").with_name("context_features.parquet"))
+        ctx["week_start"] = pd.to_datetime(ctx["key"])
+        table = table.merge(ctx.drop(columns=["key"]), on=["station_id", "week_start"],
+                            how="left")
+        n_bad = table[CTX_COLS].isna().any(axis=1).sum()
+        table = table.dropna(subset=CTX_COLS).reset_index(drop=True)
+        print(f"context joined: {len(table)} rows ({n_bad} dropped for missing context)")
     subdir = {"median": "weekly", "single": "single", "scene": "scenes"}[args.mode]
     if args.bands != "rgb":
         subdir = f"{subdir}_{args.bands}"
@@ -290,11 +351,18 @@ def main() -> int:
             loader_kw = dict(batch_size=args.batch_size, num_workers=args.workers)
             if args.workers > 0:
                 loader_kw.update(multiprocessing_context="spawn", persistent_workers=True)
+            ctx_stats = None
+            if args.context:
+                cm = tr[CTX_COLS].mean().to_numpy(dtype="float32")
+                cs = tr[CTX_COLS].std().to_numpy(dtype="float32") + 1e-6
+                ctx_stats = (cm, cs)
+
             def dl(rows, train):
                 ds = PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
                                   band_stats=band_stats,
                                   classify_threshold=(args.classify_threshold
-                                                      if args.task == "classify" else None))
+                                                      if args.task == "classify" else None),
+                                  ctx_stats=ctx_stats)
                 if train and (args.oversample_high > 1.0 or args.bucket_weights):
                     import numpy as _np
                     from torch.utils.data import WeightedRandomSampler
@@ -314,7 +382,8 @@ def main() -> int:
                     return DataLoader(ds, sampler=sampler, **loader_kw)
                 return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
-            model = make_model(in_ch).to(device)
+            n_ctx = len(CTX_COLS) if args.context else 0
+            model = make_fused(in_ch, n_ctx, args.fusion).to(device)
             loss_fn = None
             if args.task == "classify":
                 pos = float((tr2["pm25"] > args.classify_threshold).sum())
@@ -337,8 +406,8 @@ def main() -> int:
                 import torch as _t
                 model.eval(); probs = []
                 with _t.no_grad():
-                    for x, _ in dl(te, False):
-                        probs.append(_t.sigmoid(model(x.to(device)).squeeze(-1)).cpu().numpy())
+                    for x, cx, _ in dl(te, False):
+                        probs.append(_t.sigmoid(model(x.to(device), cx.to(device)).squeeze(-1)).cpu().numpy())
                 y_pred = np.concatenate(probs)
                 from sklearn.metrics import roc_auc_score
                 auc = roc_auc_score((te["pm25"] > args.classify_threshold).to_numpy(), y_pred)
