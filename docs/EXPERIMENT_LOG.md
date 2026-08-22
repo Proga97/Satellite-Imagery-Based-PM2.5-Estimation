@@ -433,12 +433,30 @@ identical 10,401-scene test set:
 | AUC | 0.896 | **0.912** | 0.897 |
 | F1 | 0.194 | **0.439** | 0.337 |
 
-**5x is the near-dominant operating point**: best overall R², best within-station, best
+(2x arm added later — see full curve below.) **5x is the smoke-priority operating point**: best overall R², best within-station, best
 AUC, F1 more than doubled, smoke bias cut ~1/3 — at the cost of +0.35 MAE on clean days
 (6–12 bucket 2.5->3.5). 10x over-rotated (clean-day noise ate the gains). **5x oversampling
 becomes the standard recipe.** Weights: `data/runs/weighted5_holdout/model_holdout_s0.pt`.
 Note: unweighted val loss initially favored smoke-naive checkpoints in the 10x arm
 (ep-1 best until ep 10); at 5x the criterion mismatch was mild (best ep 7 of 13).
+
+**Complete dose-response (4 arms, identical exam):**
+| | 1x | 2x | 5x | 10x |
+|---|---|---|---|---|
+| R² | 0.262 | 0.297 | **0.306** | 0.201 |
+| within | 0.274 | 0.309 | **0.350** | 0.313 |
+| between | **+0.105** | +0.079 | −0.248 | −1.128 |
+| MAE | 4.48 | **4.45** | 4.83 | 5.13 |
+| AUC | 0.896 | 0.905 | **0.912** | 0.897 |
+| F1 | 0.194 | 0.267 | **0.439** | 0.337 |
+| 55+ bias | −72.9 | −66.9 | **−49.5** | −49.6 |
+| clean 6–12 MAE | 2.5 | **2.6** | 3.5 | 3.8 |
+
+Two defensible operating points: **2x = no-regret all-rounder** (beats baseline everywhere,
+zero clean-day cost, modest smoke gain), **5x = smoke-priority** (big peak recovery + best
+R²/F1/AUC at ~1 µg/m³ clean-day cost, negative between). Thesis: report the whole curve;
+both models saved. Lever considered exhausted — remaining −50 smoke bias points to post-hoc
+calibration or a two-stage specialist, not more weighting.
 
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
