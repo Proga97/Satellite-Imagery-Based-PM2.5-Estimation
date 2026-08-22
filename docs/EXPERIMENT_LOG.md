@@ -566,6 +566,28 @@ custom (8.31) · AUC -> 3-stage s=5 (0.914) · F1 -> 5x (0.439) · 55+ bias -> 2
 (−44.2) · clean-day MAE -> 1x (2.50). The champion holds R² and no worst-in-column;
 10x holds four worsts and no bests.
 
+## 3o. Category-winner compositions (Aug 22 2026) — NEW FINAL CHAMPION
+
+Six a-priori compositions of the category winners, all scored offline from saved preds on
+the identical exam (all six reported; ensemble is leakage-free — every member trained on
+the same train stations, none saw test):
+
+| system | r2 | within | between | mae | f1 | auc | 55+ | clean |
+|---|---|---|---|---|---|---|---|---|
+| 3-stage soft (prev champ) | 0.336 | 0.353 | −0.01 | 4.51 | 0.393 | 0.908 | −45.1 | 2.81 |
+| **ensemble(custom+5x+damped)** | **0.367** | **0.393** | +0.01 | **4.49** | **0.459** | 0.914 | −52.6 | 2.96 |
+| best-of-breed blend (2x/5x/smokesp) | 0.337 | 0.361 | −0.03 | 4.60 | 0.409 | 0.916 | −45.2 | 3.07 |
+| 3-stage w/ ensemble router | 0.345 | 0.368 | −0.03 | 4.52 | 0.401 | 0.911 | **−43.8** | 2.88 |
+| best-of-breed w/ ens router | 0.332 | 0.364 | −0.09 | 4.67 | 0.418 | 0.914 | −44.3 | 3.19 |
+| ens3+smokesp blend | 0.320 | 0.360 | −0.26 | 4.74 | 0.400 | 0.916 | −43.0 | 3.31 |
+
+**CHAMPION: plain 3-model ensemble — r2 0.367** (biggest jump since fine-tuning; diverse
+weighting biases cancel), best within/F1/MAE, positive between restored. Co-champion for
+smoke-priority: 3-stage with ensemble router (0.345, 55+ −43.8). Deployment: mean of three
+saved networks (weightedcustom, weighted5, weighteddamped). Caveats: 6-variant comparison
+on one split (all reported); fresh-split re-validation queued and now essential.
+Project arc closes at **0.00 -> 0.367**.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
