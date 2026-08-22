@@ -62,12 +62,13 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 class PatchDataset(Dataset):
     def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool,
-                 band_stats: tuple | None = None):
+                 band_stats: tuple | None = None, classify_threshold: float | None = None):
         self.rows = rows.reset_index(drop=True)
         self.root = patch_root
         self.gain = gain
         self.train = train
         self.band_stats = band_stats  # (mean[C], std[C]) in reflectance units, or None for RGB path
+        self.classify_threshold = classify_threshold
 
     def __len__(self):
         return len(self.rows)
@@ -92,8 +93,11 @@ class PatchDataset(Dataset):
             k = int(torch.randint(0, 4, (1,)))
             if k:
                 img = torch.rot90(img, k, dims=[1, 2])
-        # log1p target: PM spans 0-466 ug/m3; raw-scale MSE is dominated by smoke days
-        y = float(np.log1p(max(float(r["pm25"]), 0.0)))
+        if self.classify_threshold is not None:
+            y = 1.0 if float(r["pm25"]) > self.classify_threshold else 0.0
+        else:
+            # log1p target: PM spans 0-466 ug/m3; raw MSE is dominated by smoke days
+            y = float(np.log1p(max(float(r["pm25"]), 0.0)))
         return img, torch.tensor(y, dtype=torch.float32)
 
 
@@ -113,10 +117,10 @@ def make_model(in_ch: int = 3) -> nn.Module:
 
 
 def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
-              min_epochs=12):
+              min_epochs=12, loss_fn=None):
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
-    loss_fn = nn.HuberLoss()
+    loss_fn = loss_fn or nn.HuberLoss()
     best_val, best_state, patience = float("inf"), None, 0
     va_hist: list[float] = []
     for ep in range(epochs):
@@ -190,6 +194,11 @@ def main() -> int:
     parser.add_argument("--bucket-weights", type=float, nargs=5, default=None,
                         metavar=("W_2.5-6", "W_6-12", "W_12-35", "W_35-55", "W_55+"),
                         help="per-bucket sampling weights (overrides --oversample-high)")
+    parser.add_argument("--task", choices=["regress", "classify"], default="regress",
+                        help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
+    parser.add_argument("--classify-threshold", type=float, default=20.0)
+    parser.add_argument("--train-max-pm", type=float, default=None,
+                        help="train/val only on scenes with pm25 <= this (clean specialist)")
     parser.add_argument("--train-min-pm", type=float, default=None,
                         help="train/val only on scenes with pm25 > this (specialist regime); "
                              "test set stays complete")
@@ -263,6 +272,11 @@ def main() -> int:
                 tr = tr[tr["pm25"] > args.train_min_pm]
                 print(f"  specialist regime: train {before} -> {len(tr)} scenes "
                       f"(pm > {args.train_min_pm})")
+            if args.train_max_pm is not None:
+                before = len(tr)
+                tr = tr[tr["pm25"] <= args.train_max_pm]
+                print(f"  clean regime: train {before} -> {len(tr)} scenes "
+                      f"(pm <= {args.train_max_pm})")
             # station-aware val carve-out from train (for early stopping)
             val_stations = tr["station_id"].drop_duplicates().sample(
                 frac=0.15, random_state=args.seed)
@@ -278,7 +292,9 @@ def main() -> int:
                 loader_kw.update(multiprocessing_context="spawn", persistent_workers=True)
             def dl(rows, train):
                 ds = PatchDataset(rows, patch_root, cfg.embeddings["rgb_gain"], train,
-                                  band_stats=band_stats)
+                                  band_stats=band_stats,
+                                  classify_threshold=(args.classify_threshold
+                                                      if args.task == "classify" else None))
                 if train and (args.oversample_high > 1.0 or args.bucket_weights):
                     import numpy as _np
                     from torch.utils.data import WeightedRandomSampler
@@ -299,8 +315,17 @@ def main() -> int:
                 return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
             model = make_model(in_ch).to(device)
+            loss_fn = None
+            if args.task == "classify":
+                pos = float((tr2["pm25"] > args.classify_threshold).sum())
+                neg = float(len(tr2) - pos)
+                loss_fn = nn.BCEWithLogitsLoss(
+                    pos_weight=torch.tensor(neg / max(pos, 1.0)).to(device))
+                print(f"  classifier: {int(pos)} positive / {int(neg)} negative "
+                      f"(pos_weight {neg/max(pos,1.0):.1f})")
             model = train_one(model, dl(tr2, True), dl(va, False), device,
-                              args.epochs, args.lr, args.patience, args.min_epochs)
+                              args.epochs, args.lr, args.patience, args.min_epochs,
+                              loss_fn=loss_fn)
             if split_name in ("final", "holdout"):
                 out_path = run_dir / f"model_{split_name}_s{args.seed}.pt"
                 torch.save({"state_dict": model.state_dict(),
@@ -308,6 +333,24 @@ def main() -> int:
                 print(f"saved model weights -> {out_path}")
                 if split_name == "final":
                     continue
+            if args.task == "classify":
+                import torch as _t
+                model.eval(); probs = []
+                with _t.no_grad():
+                    for x, _ in dl(te, False):
+                        probs.append(_t.sigmoid(model(x.to(device)).squeeze(-1)).cpu().numpy())
+                y_pred = np.concatenate(probs)
+                from sklearn.metrics import roc_auc_score
+                auc = roc_auc_score((te["pm25"] > args.classify_threshold).to_numpy(), y_pred)
+                print(f"  -> classifier AUC = {auc:.4f}")
+                pd.DataFrame({"station_id": te["station_id"], "week_start": te["week_start"],
+                              "y_true": te["pm25"], "y_pred": y_pred}).to_parquet(
+                    run_dir / f"preds_{split_name}_f{fold}.parquet", index=False)
+                all_rows.append({"split": split_name, "fold": fold, "auc": auc,
+                                 "r2": float("nan"), "rmse": float("nan"), "mae": float("nan"),
+                                 "between_station_r2": float("nan"),
+                                 "within_station_r2": float("nan"), "n_test": len(te)})
+                continue
             y_pred = predict(model, dl(te, False), device)
             m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
             m.update(split=split_name, fold=fold, n_test=len(te))
