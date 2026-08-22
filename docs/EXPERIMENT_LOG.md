@@ -543,6 +543,29 @@ p = sigmoid((router−20)/3). Findings: (2) soft blending worth +0.04 r2 over ha
 (0.336 vs 0.329) though near-ceiling alone. Deployment = 3 saved models + 3 lines of math:
 weighteddamped (router), specialist_clean, specialist_high.
 
+## 3n-bis. Consolidated bucket grids (completes the §3k/§3l/§3n tables)
+
+**All seven single-model arms, per bucket (bias/MAE):**
+| bucket | 1x | 2x | custom | 5x | damped-eq | 10x | exact-eq |
+|---|---|---|---|---|---|---|---|
+| 2.5–6 | +3.8/3.8 | +3.3/3.4 | +3.6/3.8 | +3.7/3.8 | +3.4/3.5 | +3.9/4.1 | +4.0/4.2 |
+| 6–12 | +0.6/2.5 | +0.1/2.6 | +0.4/3.1 | +1.0/3.5 | +0.4/2.7 | +1.2/3.8 | +1.5/3.6 |
+| 12–35 | −5.7/6.3 | −6.3/6.8 | −5.3/6.7 | −3.8/6.8 | −4.9/6.8 | −3.6/7.2 | −3.4/6.4 |
+| 35–55 | −22.3/22.3 | −20.5/22.6 | −19.1/19.6 | −11.7/19.1 | −14.6/21.0 | −15.4/17.7 | −15.3/18.9 |
+| 55+ | −72.9/72.9 | −66.9/66.9 | −56.8/58.7 | −49.5/50.0 | −51.4/55.3 | −49.6/53.1 | −50.9/54.1 |
+
+**Two-stage hard @20 buckets:** 2.5–6: +3.5/3.6 · 6–12: +0.4/2.8 · 12–35: −4.6/7.0 ·
+35–55: −13.2/22.2 · 55+: −44.9/49.0 (true 98.1 -> pred 53.2)
+
+**CHAMPION (3-stage soft s=3) buckets:** 2.5–6: +3.6/3.7 · 6–12: +0.6/2.8 ·
+12–35: −4.8/6.7 · 35–55: −14.0/22.7 · 55+: −45.1/48.9 (true 98.1 -> pred 53.0)
+
+**Column-winner summary (no system sweeps all):** R² -> 3-stage soft (0.336) · within ->
+custom (0.363) · between -> 1x baseline (+0.105) · MAE -> 2x/damped (4.45) · RMSE ->
+custom (8.31) · AUC -> 3-stage s=5 (0.914) · F1 -> 5x (0.439) · 55+ bias -> 2-stage soft
+(−44.2) · clean-day MAE -> 1x (2.50). The champion holds R² and no worst-in-column;
+10x holds four worsts and no bests.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
