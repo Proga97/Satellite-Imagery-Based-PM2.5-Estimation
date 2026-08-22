@@ -190,6 +190,9 @@ def main() -> int:
     parser.add_argument("--bucket-weights", type=float, nargs=5, default=None,
                         metavar=("W_2.5-6", "W_6-12", "W_12-35", "W_35-55", "W_55+"),
                         help="per-bucket sampling weights (overrides --oversample-high)")
+    parser.add_argument("--train-min-pm", type=float, default=None,
+                        help="train/val only on scenes with pm25 > this (specialist regime); "
+                             "test set stays complete")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -255,6 +258,11 @@ def main() -> int:
                 continue
             tr = table.iloc[tr_idx]
             te = table.iloc[te_idx]
+            if args.train_min_pm is not None:
+                before = len(tr)
+                tr = tr[tr["pm25"] > args.train_min_pm]
+                print(f"  specialist regime: train {before} -> {len(tr)} scenes "
+                      f"(pm > {args.train_min_pm})")
             # station-aware val carve-out from train (for early stopping)
             val_stations = tr["station_id"].drop_duplicates().sample(
                 frac=0.15, random_state=args.seed)
