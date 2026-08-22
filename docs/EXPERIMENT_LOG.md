@@ -588,6 +588,30 @@ saved networks (weightedcustom, weighted5, weighteddamped). Caveats: 6-variant c
 on one split (all reported); fresh-split re-validation queued and now essential.
 Project arc closes at **0.00 -> 0.367**.
 
+## 3p. Fresh-split re-validation (Aug 22 2026) — CHAMPION CONFIRMED
+
+All three ensemble members retrained from scratch on a NEW stratified split (seed 1;
+10,106 test scenes at a different 20% of stations). One pre-registered composition
+(mean of three), scored once, no further choices:
+
+| | original split | fresh split |
+|---|---|---|
+| r2 | 0.367 | **0.362** |
+| within | 0.393 | 0.367 |
+| between | +0.01 | +0.152 |
+| mae | 4.49 | **4.11** |
+| auc | 0.914 | **0.947** |
+| f1 | 0.459 | 0.444 |
+
+Members individually replicated: custom 0.318 (was 0.317), 5x 0.317 (0.306),
+damped 0.353 (0.307). Fresh-split buckets: 2.5-6 +2.8/2.9 · 6-12 −0.3/2.5 ·
+12-35 −5.8/6.9 · 35-55 −16.1/20.0 · 55+ −63.2/63.7 (this draw's 65 extreme scenes were
+harder — small-n bucket variance; headline metrics stable).
+
+**Thesis-quotable result: ensemble r2 ≈ 0.36 (0.362–0.367 across two independent station
+splits), MAE 4.1–4.5 µg/m³, exceedance AUC 0.91–0.95 at never-seen stations.**
+Weights: data/runs/reval_{custom,5x,damped}/model_holdout_s1.pt (also backed up).
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
