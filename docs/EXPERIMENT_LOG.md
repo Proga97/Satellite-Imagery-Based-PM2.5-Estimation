@@ -497,6 +497,39 @@ while keeping clean days near-baseline (2.80).** Deployment = two saved models +
 (reported transparently); T=20 was pre-registered as the natural boundary and the 20–25
 plateau shows insensitivity.
 
+## 3m. Design analysis: model splitting (Aug 22 2026, discussion — not run)
+
+Three-stage proposal (dedicated clean-vs-elevated classifier -> clean specialist +
+smoke specialist) analyzed; code for classifier mode (--task classify, BCE pos-weighted)
+and clean-specialist regime (--train-max-pm) is written and committed but NOT trained
+(stopped at user request). Conclusions of the analysis:
+- Splitting is structurally correct here: the 7-arm sweep proved one network cannot hold
+  both regime calibrations; routing dissolved the trade-off (two-stage broke the -50 floor).
+- Classifier router: real headroom, but the binding metric is RECALL at the routing
+  threshold, not AUC — false negatives (smoke -> clean model) are catastrophic; false
+  positives are cheap (specialist floors ~20). Tune for recall; blend softly
+  (final = (1-p)*clean + p*smoke), never hard-switch (boundary discontinuity at ~20).
+- Clean specialist: weak link — clean-day MAE 2.5–2.8 is near monitor noise (±1–2), and
+  the very-clean +3.5 bias is a censoring artifact of the pm>=2.5 cutoff, unfixable by
+  training-set purification. Expected gain ~0.1–0.2 MAE at best.
+- Per-climate expert mixtures: theoretically right (transfer experiments showed
+  climate-specific haze signatures) but fragments the data; RQ1's location features are
+  the cheaper route to the same signal. Learned MoE: data-hungry, interpretability loss.
+- Expected three-stage net: R² ~0.32–0.33 (≈ two-stage), smoke bias maybe −45 -> −40 via
+  recall; an architecture upgrade more than an accuracy leap. Filed as future work.
+- Remaining highest-EV modeling levers (also future work): RQ1 context fusion (targets
+  between-station ≈ 0.1, the last big unclaimed axis), post-hoc calibration on the
+  specialist, ResNet-50 capacity.
+
+## 3n. Housekeeping
+- All 14 model weight files (555 MB) backed up to OneDrive
+  (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
+  {run}__model_*.pt). data/ remains gitignored/local.
+- Final project state at the close of the modeling phase: 199 stations / 5 states /
+  54,347 curated scenes (2020–2025) / ~34 experiments / best single model:
+  weightedcustom (R² 0.317) & weighteddamped (all-rounder) / best system: two-stage
+  router+specialist (R² 0.320, 55+ bias −44.9).
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
