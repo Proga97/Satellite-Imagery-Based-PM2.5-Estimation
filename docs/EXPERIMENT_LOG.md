@@ -452,11 +452,27 @@ Note: unweighted val loss initially favored smoke-naive checkpoints in the 10x a
 | 55+ bias | −72.9 | −66.9 | **−49.5** | −49.6 |
 | clean 6–12 MAE | 2.5 | **2.6** | 3.5 | 3.8 |
 
-Two defensible operating points: **2x = no-regret all-rounder** (beats baseline everywhere,
-zero clean-day cost, modest smoke gain), **5x = smoke-priority** (big peak recovery + best
-R²/F1/AUC at ~1 µg/m³ clean-day cost, negative between). Thesis: report the whole curve;
-both models saved. Lever considered exhausted — remaining −50 smoke bias points to post-hoc
-calibration or a two-stage specialist, not more weighting.
+**FINAL seven-arm sweep** (added: user's hand-tuned `custom` 1.2/1/1.6/3/5; inverse-
+frequency `exact-eq` 1.2/1/1.8/37.9/77 matching every bucket to the largest; `damped-eq`
+= sqrt-damped equalization 1.1/1/1.3/6.2/8.8):
+
+| arm | r2 | within | between | mae | auc | f1 | 55+ bias | clean 6-12 mae |
+|---|---|---|---|---|---|---|---|---|
+| 1x | 0.262 | 0.274 | +0.105 | 4.48 | 0.896 | 0.194 | −72.9 | 2.5 |
+| 2x | 0.297 | 0.309 | +0.079 | **4.45** | 0.905 | 0.267 | −66.9 | 2.6 |
+| custom | **0.317** | **0.363** | −0.328 | 4.69 | 0.896 | 0.392 | −56.8 | 3.1 |
+| 5x | 0.306 | 0.350 | −0.248 | 4.83 | **0.912** | **0.439** | **−49.5** | 3.5 |
+| **damped-eq** | 0.307 | 0.317 | **+0.103** | **4.45** | 0.909 | 0.408 | −51.4 | 2.7 |
+| 10x | 0.201 | 0.313 | −1.128 | 5.13 | 0.897 | 0.337 | −49.6 | 3.8 |
+| exact-eq | 0.301 | 0.342 | −0.318 | 4.91 | 0.895 | 0.391 | −54.1 | 3.6 |
+
+Verdicts: **damped-eq is the best all-rounder** — near-best everywhere, worst nowhere, and
+the ONLY strong arm that keeps positive between-station (place-ranking survives sqrt-damped
+weights). `custom` = best R²/within/RMSE; `5x` = best detector (AUC/F1) and deepest smoke
+recovery; `exact-eq` (77x) did not collapse but unlocked nothing beyond 5x — the lever is
+fully mapped, ~−50 is the weighting floor for 55+ bias. Remaining smoke bias needs post-hoc
+calibration or a two-stage specialist. Production recommendation: damped-eq
+(`weighteddamped_holdout/model_holdout_s0.pt`).
 
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
