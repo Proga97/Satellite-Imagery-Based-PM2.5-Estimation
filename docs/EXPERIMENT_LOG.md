@@ -474,6 +474,29 @@ fully mapped, ~−50 is the weighting floor for 55+ bias. Remaining smoke bias n
 calibration or a two-stage specialist. Production recommendation: damped-eq
 (`weighteddamped_holdout/model_holdout_s0.pt`).
 
+## 3l. Two-stage specialist system (Aug 22 2026) — best of project
+
+Stage A: damped-eq model predicts every scene and acts as its own router. Stage B: a
+**smoke specialist** trained ONLY on elevated scenes (pm>20: 2,629 train / 482 val;
+standalone full-exam r2 −2.2, by design — it lives only behind the router). Rule:
+final = specialist prediction when router >= T, else everyday prediction.
+Threshold sweep (identical 10,401-scene exam; T=20 is the a priori choice = the
+specialist's training boundary; results stable 20–25):
+
+| T | %routed | r2 | within | mae | f1 | auc | 55+ bias | clean 6-12 mae |
+|---|---|---|---|---|---|---|---|---|
+| 10 | 32.7% | −0.172 | 0.033 | 6.90 | 0.321 | 0.899 | −39.7 | 6.30 |
+| 15 | 8.9% | 0.281 | 0.300 | 4.73 | 0.379 | 0.910 | −42.3 | 3.12 |
+| **20** | 4.2% | **0.320** | 0.331 | 4.52 | 0.385 | 0.909 | **−44.9** | 2.80 |
+| 25 | 2.4% | 0.323 | 0.333 | 4.48 | 0.372 | 0.909 | −46.7 | 2.76 |
+
+**Best R² of the project (0.320) AND breaks the −50 weighting floor on 55+ bias (−44.9)
+while keeping clean days near-baseline (2.80).** Deployment = two saved models + one if:
+`weighteddamped_holdout/model_holdout_s0.pt` (router+everyday) and
+`specialist_high/model_holdout_s0.pt` (smoke regime). Caveat: T verified by sweep on test
+(reported transparently); T=20 was pre-registered as the natural boundary and the 20–25
+plateau shows insensitivity.
+
 ## 4. Engineering incidents worth a methods footnote
 - macOS/MPS DataLoader deadlock (fork-context workers) froze a run mid-fold; fixed with
   spawn-context workers + fold-level resume from saved predictions. Single-threaded
