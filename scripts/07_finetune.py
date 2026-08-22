@@ -269,6 +269,7 @@ def main() -> int:
     if args.context:
         ctx = pd.read_parquet(cfg.path("labels_scenehour").with_name("context_features.parquet"))
         ctx["week_start"] = pd.to_datetime(ctx["key"])
+        table["week_start"] = pd.to_datetime(table["week_start"])
         table = table.merge(ctx.drop(columns=["key"]), on=["station_id", "week_start"],
                             how="left")
         n_bad = table[CTX_COLS].isna().any(axis=1).sum()
