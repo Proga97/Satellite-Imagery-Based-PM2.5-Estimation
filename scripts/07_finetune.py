@@ -62,6 +62,9 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 CTX_COLS = ["lat", "lon", "elevation_m", "temp_c", "rh", "wind_speed", "precip_mm",
             "pressure_hpa", "sun_elev_deg", "doy_sin", "doy_cos"]
+# frozen full list: sample filtering always uses this so every fused experiment
+# trains on the same 52,315 scenes / same stratified split regardless of ctx subset
+ALL_CTX_COLS = list(CTX_COLS)
 
 
 class PatchDataset(Dataset):
@@ -249,6 +252,9 @@ def main() -> int:
                         help="context fusion: concat at head, or FiLM modulation of features")
     parser.add_argument("--no-latlon", action="store_true",
                         help="ablation: drop raw lat/lon from the context vector")
+    parser.add_argument("--ctx-cols", default=None,
+                        help="ablation: comma-separated subset of context columns "
+                             "(overrides the default 11; sample set stays identical)")
     parser.add_argument("--task", choices=["regress", "classify"], default="regress",
                         help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
     parser.add_argument("--classify-threshold", type=float, default=20.0)
@@ -259,6 +265,12 @@ def main() -> int:
                              "test set stays complete")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    if args.ctx_cols:
+        sel = [c.strip() for c in args.ctx_cols.split(",")]
+        bad = [c for c in sel if c not in ALL_CTX_COLS]
+        if bad:
+            raise SystemExit(f"unknown context columns: {bad}")
+        CTX_COLS[:] = sel
     if getattr(args, "no_latlon", False):
         for c in ("lat", "lon"):
             CTX_COLS.remove(c)
@@ -277,8 +289,8 @@ def main() -> int:
         table["week_start"] = pd.to_datetime(table["week_start"])
         table = table.merge(ctx.drop(columns=["key"]), on=["station_id", "week_start"],
                             how="left")
-        n_bad = table[CTX_COLS].isna().any(axis=1).sum()
-        table = table.dropna(subset=CTX_COLS).reset_index(drop=True)
+        n_bad = table[ALL_CTX_COLS].isna().any(axis=1).sum()
+        table = table.dropna(subset=ALL_CTX_COLS).reset_index(drop=True)
         print(f"context joined: {len(table)} rows ({n_bad} dropped for missing context)")
     subdir = {"median": "weekly", "single": "single", "scene": "scenes"}[args.mode]
     if args.bands != "rgb":
