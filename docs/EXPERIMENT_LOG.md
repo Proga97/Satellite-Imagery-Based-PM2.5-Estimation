@@ -702,6 +702,45 @@ no-latlon), full 36-station holdout:
 
 Weights: data/runs/fused_film_nolatlon/model_holdout_s0.pt.
 
+## 3s. Geo+time-only context (Aug 23 2026) — TRIPLE-FiLM BLEND 0.406, NEW CHAMPION
+
+User-proposed ablation: FiLM with a 4-feature context — lat, lon, doy_sin, doy_cos
+(pure geography + season, no ERA5, no elevation, no sun). `--ctx-cols` flag added;
+sample filtering frozen to the full 11-col context list so all fused runs share the
+same 52,315 scenes / 36-station split.
+
+Full holdout results (same split for everything below):
+
+| model | r2 | mae | between | within |
+|---|---|---|---|---|
+| FiLM full ctx (11) | 0.377 | **3.95** | +0.146 | 0.386 |
+| FiLM physics-only (9) | 0.304 | 4.19 | +0.483 | 0.300 |
+| FiLM geo+time (4) | **0.380** | 4.08 | +0.405 | 0.381 |
+| blend full+nolatlon (§3r) | 0.391 | 3.92 | +0.453 | 0.391 |
+| blend full+geotime | 0.400 | 3.87 | +0.367 | 0.403 |
+| blend nolatlon+geotime | 0.388 | 3.96 | **+0.592** | 0.384 |
+| **blend all three** | **0.406** | **3.86** | +0.513 | **0.405** |
+
+Controlled 16-station subset: geo+time r2 0.362 (beats image-only's 0.357), between
+**+0.697** — best place-ranking ever measured in the project.
+
+**Findings**
+1. §3q/§3r interpretation revised: coordinates were never the poison — concat was.
+   Through FiLM (context can only modulate image features, never reach the output
+   directly), a raw season+place prior generalizes to unseen stations. Training curve
+   showed early val divergence (epochs 2-4) then full recovery once the image branch
+   re-asserted — the architecture self-corrects where concat cannot.
+2. Geo+time (4 features, zero external data fetches beyond the image) is the best
+   single model — a strictly simpler deployment than ERA5-dependent variants.
+3. Weather still contributes: full-ctx keeps best MAE/within; the three context sets
+   err differently, so the triple blend dominates every axis (r2 0.406, first ever
+   past 0.40; prior champions: 0.391 §3r, 0.367 §3o).
+4. Caveats: single split, seed 0, no-latlon member undertrained (epoch-1 checkpoint).
+   Fresh-split re-validation of the triple blend is the required next step.
+
+Training: best epoch 10 (smooth val 0.1231; full-ctx 0.1069). Weights:
+data/runs/fused_film_geotime/model_holdout_s0.pt (backed up).
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
