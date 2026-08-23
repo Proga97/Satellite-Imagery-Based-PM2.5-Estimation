@@ -247,6 +247,8 @@ def main() -> int:
                         help="fuse 11 context features (met/elev/sun/season/latlon)")
     parser.add_argument("--fusion", choices=["concat", "film"], default="concat",
                         help="context fusion: concat at head, or FiLM modulation of features")
+    parser.add_argument("--no-latlon", action="store_true",
+                        help="ablation: drop raw lat/lon from the context vector")
     parser.add_argument("--task", choices=["regress", "classify"], default="regress",
                         help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
     parser.add_argument("--classify-threshold", type=float, default=20.0)
@@ -257,6 +259,9 @@ def main() -> int:
                              "test set stays complete")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    if getattr(args, "no_latlon", False):
+        for c in ("lat", "lon"):
+            CTX_COLS.remove(c)
 
     cfg = load_config()
     tbl_sfx = "_allscenes" if args.mode == "scene" else ""
