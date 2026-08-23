@@ -227,7 +227,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", default="finetune_l1c_scene")
     parser.add_argument("--product", choices=["l2a", "l1c"], default="l1c")
-    parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour"],
+    parser.add_argument("--labels", choices=["weekly", "overpass", "scene", "scenehour",
+                                             "rq2daily", "rq2weekly"],
                         default="scene")
     parser.add_argument("--mode", choices=["median", "single", "scene"], default="single")
     parser.add_argument("--bands", choices=["rgb", "all"], default="rgb")
