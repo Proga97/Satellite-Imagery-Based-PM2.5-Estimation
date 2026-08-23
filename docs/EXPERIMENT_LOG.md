@@ -741,6 +741,41 @@ Controlled 16-station subset: geo+time r2 0.362 (beats image-only's 0.357), betw
 Training: best epoch 10 (smooth val 0.1231; full-ctx 0.1069). Weights:
 data/runs/fused_film_geotime/model_holdout_s0.pt (backed up).
 
+## 3t. Fresh-split re-validation of the triple-FiLM blend (Aug 23 2026) — CONFIRMED, 0.437
+
+Same protocol as §3p: all three FiLM members retrained from scratch on the seed-1
+stratified station holdout (10,333 test scenes / 36 stations, no overlap in role with
+seed-0), recipe frozen, one pre-registered composition (mean of three) scored once.
+
+| | seed-0 split (§3s) | seed-1 split |
+|---|---|---|
+| blend r2 | 0.406 | **0.437** |
+| mae | **3.86** | 4.04 |
+| between | **+0.513** | +0.398 |
+| within | 0.405 | **0.439** |
+| exceedance F1 | 0.488 | **0.563** |
+| members full/physics/geotime | 0.377 / 0.304 / 0.380 | 0.422 / 0.382 / 0.299 |
+
+Seed-1 blend buckets: 2.5-6 +2.6/2.8 · 6-12 −0.0/2.4 · 12-35 −5.0/6.9 ·
+35-55 −10.0/18.2 · 55+ −44.3/50.4 (extreme buckets better on this draw; F1 0.563 is
+the project's best exceedance score ever).
+
+**Findings**
+1. Champion confirmed and exceeded: r2 0.437 on a fully independent split. The blend
+   beats its best member on BOTH splits (0.406>0.380, 0.437>0.422) — the ensemble
+   effect replicates, not just the level.
+2. Physics-only trained properly this time (12 epochs, 0.382): its seed-0 0.304 was
+   undertraining, as suspected in §3r.
+3. Individual members swing hard between splits (geotime 0.380→0.299, full
+   0.377→0.422) — single models are split-lottery; the blend is the stable object.
+   Report the blend, never a lone member.
+
+**THESIS-QUOTABLE RESULT: triple-FiLM blend r2 0.41-0.44 across two independent
+never-seen-station splits, MAE ~4 µg/m³, between-station +0.40-0.51, exceedance
+F1 0.49-0.56.** (Prior certified champion: image-only ensemble 0.362-0.367.)
+
+Weights: data/runs/reval_film_{full,nolatlon,geotime}/model_holdout_s1.pt (backed up).
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
