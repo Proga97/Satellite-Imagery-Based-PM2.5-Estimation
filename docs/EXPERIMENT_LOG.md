@@ -612,6 +612,57 @@ harder — small-n bucket variance; headline metrics stable).
 splits), MAE 4.1–4.5 µg/m³, exceedance AUC 0.91–0.95 at never-seen stations.**
 Weights: data/runs/reval_{custom,5x,damped}/model_holdout_s1.pt (also backed up).
 
+## 3q. Context fusion — concat vs FiLM head-to-head (Aug 22 2026)
+
+Phase-2/RQ1 opening move. Context vector (11 features, standardized by train stats):
+lat, lon, elevation_m, temp_c, rh, wind_speed, precip_mm, pressure_hpa, sun_elev_deg,
+doy_sin, doy_cos. Sources: ERA5-Land daily aggregates via GEE (per-station getRegion,
+chunked per-year after a memory-limit crash), SRTM elevation, NOAA solar-elevation
+formula at the exact overpass timestamp (scripts/10_context_features.py →
+data/interim/context_features.parquet, 102,489 scene-contexts; 4,792 scenes lack met —
+coastal stations off ERA5-Land's land-only grid — and are dropped from fused runs:
+52,315 of 54,347 scenes, 190 stations survive).
+
+Two fusion designs on the damped recipe (bucket-weights 1.1/1.0/1.3/6.2/8.8, seed 0,
+stratified holdout). NOTE: dropping context-missing rows changed the station list, so
+the fused runs drew a different stratified holdout (36 test stations) than the
+image-only damped run (38); only 16 stations overlap. Both views reported.
+
+- **concat**: ctx MLP (11→64→64) concatenated with the 512-d image vector at the head.
+- **FiLM**: ctx MLP → per-channel gamma/beta modulating the 512-d image features
+  (`f·(1+γ)+β`) before the head — context conditions interpretation of the image
+  rather than entering as a parallel signal.
+
+Full own-test-set results:
+
+| model | r2 | mae | rmse | between | within | exc acc | exc F1 |
+|---|---|---|---|---|---|---|---|
+| image-only damped (38 st) | 0.307 | 4.45 | 8.37 | +0.103 | 0.317 | 0.983 | 0.408 |
+| concat-fused (36 st) | 0.304 | 4.47 | 9.68 | **−0.373** | 0.317 | 0.981 | 0.420 |
+| FiLM-fused (36 st) | **0.377** | **3.95** | 9.16 | +0.146 | **0.386** | **0.986** | **0.449** |
+
+Strictly controlled — identical 4,131 scenes / 16 stations unseen by all three:
+
+| model | r2 | mae | rmse | between | within |
+|---|---|---|---|---|---|
+| image-only damped | **0.357** | 4.12 | 7.78 | +0.276 | 0.350 |
+| concat-fused | 0.275 | 4.41 | 8.26 | −0.427 | 0.289 |
+| FiLM-fused | 0.333 | **3.80** | 7.92 | **+0.363** | 0.331 |
+
+**Findings**
+1. *How* you fuse matters more than *what* you fuse: same 11 features, concat destroys
+   between-station generalization (−0.37/−0.43 — raw lat/lon next to the head invites
+   coordinate memorization that inverts at unseen stations) while FiLM improves it.
+2. FiLM-fused r2 0.377 is the best single-model number of the project (beats the
+   3-model image-only ensemble's 0.367, though on a different split), with best-ever
+   MAE 3.95 and best within-station 0.386.
+3. Controlled subset: image-only still edges FiLM on r2 (0.357 vs 0.333; driven by a
+   few extreme smoke scenes) but FiLM wins MAE and between-station — verdict deferred
+   to the no-latlon ablation (§3r).
+
+Training: concat best epoch 7 (smooth val 0.1144), stop @13. FiLM best epoch 7
+(0.1069), stop @13. Weights: data/runs/fused_{concat,film}/model_holdout_s0.pt.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
