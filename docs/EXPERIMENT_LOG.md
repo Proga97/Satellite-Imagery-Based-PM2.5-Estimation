@@ -776,6 +776,45 @@ F1 0.49-0.56.** (Prior certified champion: image-only ensemble 0.362-0.367.)
 
 Weights: data/runs/reval_film_{full,nolatlon,geotime}/model_holdout_s1.pt (backed up).
 
+## 3u. RQ2 formal table: label aggregation (Aug 23 2026)
+
+Same 54,347 scenes relabeled three ways — EPA reading ±1h of overpass (project
+standard), that day's EPA mean, that ISO-week's mean (pm ≥ 2.5 floor applied to each;
+52,960 / 52,785 rows survive relabeling) — same champion architecture (FiLM
+full-context, damped recipe, seed 0). All arms drew the same 36 test stations.
+Tables: model_table_l1c_rq2{daily,weekly}_allscenes.parquet.
+
+View A — per-scene, each arm scored against its own label:
+
+| label | r2 | mae | between | within |
+|---|---|---|---|---|
+| hourly ±1h | **0.377** | 3.95 | +0.146 | 0.386 |
+| daily mean | **0.377** | 3.80 | +0.205 | 0.387 |
+| weekly mean | 0.321 | 3.34* | +0.106 | 0.339 |
+
+*not comparable across rows — smoother targets deflate MAE; r2 is the fair column.
+
+View B — deployment view: all of a week's scene predictions averaged (~1.45
+scenes/station-week), scored against the weekly mean:
+
+| trained on | r2 | mae |
+|---|---|---|
+| hourly | 0.262 | 3.49 |
+| daily | 0.325 | 3.28 |
+| weekly | **0.383** | **3.13** |
+
+**Findings (RQ2 answered)**
+1. Synchronization matters up to the daily level, then stops: hourly = daily (0.377
+   exactly), weekly costs −0.056. A daytime snapshot predicts the day's mean as well
+   as the noisy single hour, but most of a week was never photographed.
+2. Match the training label to the shipped product: for a weekly product, the
+   weekly-trained model + multi-scene averaging wins (0.383 vs 0.262 hourly-trained).
+   Tight-label training does not recover via averaging — it learned to chase instants.
+3. Weekly LABELS were never the proposal's fatal flaw — weekly image COMPOSITES +
+   frozen CNN were. Per-scene training with weekly labels reaches 0.32-0.38.
+
+Weights: data/runs/rq2_{daily,weekly}/model_holdout_s0.pt.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
