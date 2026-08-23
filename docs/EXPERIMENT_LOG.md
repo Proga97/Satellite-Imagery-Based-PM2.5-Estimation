@@ -663,6 +663,45 @@ Strictly controlled — identical 4,131 scenes / 16 stations unseen by all three
 Training: concat best epoch 7 (smooth val 0.1144), stop @13. FiLM best epoch 7
 (0.1069), stop @13. Weights: data/runs/fused_{concat,film}/model_holdout_s0.pt.
 
+## 3r. Lat/lon ablation + FiLM blend (Aug 22 2026) — NEW PROJECT BEST 0.391
+
+FiLM rerun with lat/lon removed from the context vector (9 physics features:
+met/elevation/sun/season; `--no-latlon`). Same damped recipe, same 36-station split
+as §3q's fused runs. Early stopping kept the EPOCH-1 checkpoint (smooth val 0.1070,
+never beaten in 13 epochs) — undertraining caveat on its within-station numbers.
+
+Controlled subset (4,131 scenes / 16 stations unseen by all four):
+
+| model | r2 | mae | between | within |
+|---|---|---|---|---|
+| image-only damped | **0.357** | 4.12 | +0.276 | **0.350** |
+| concat-fused | 0.275 | 4.41 | −0.427 | 0.289 |
+| FiLM full ctx | 0.333 | **3.80** | +0.363 | 0.331 |
+| FiLM no-latlon | 0.312 | 4.05 | **+0.499** | 0.304 |
+
+Full 36-station holdout: FiLM no-latlon r2 0.304, between **+0.483**, within 0.300.
+
+**Pre-registered-style composition** — mean of the two FiLM models (full-ctx +
+no-latlon), full 36-station holdout:
+
+| | film full | film no-latlon | **blend** |
+|---|---|---|---|
+| r2 | 0.377 | 0.304 | **0.391** |
+| mae | 3.95 | 4.28 | 3.92 |
+| between | +0.146 | +0.483 | **+0.453** |
+| within | 0.386 | 0.300 | **0.391** |
+
+**Findings**
+1. Physics context alone (no coordinates) nearly doubles between-station ranking vs
+   image-only (+0.50 vs +0.28 controlled) — weather/elevation/sun/season is what fixes
+   the "ranking of places" axis, the project's long-standing weakest component.
+2. Lat/lon buys within-station sharpness at the cost of memorization pressure; the
+   two-model blend keeps both strengths: r2 0.391 — best number of the project
+   (previous best: 3-model image-only ensemble 0.367/0.362).
+3. Caveat: no-latlon checkpoint is epoch-1; a seed rerun should confirm (open item).
+
+Weights: data/runs/fused_film_nolatlon/model_holdout_s0.pt.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
