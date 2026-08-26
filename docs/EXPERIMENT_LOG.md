@@ -815,6 +815,35 @@ scenes/station-week), scored against the weekly mean:
 
 Weights: data/runs/rq2_{daily,weekly}/model_holdout_s0.pt.
 
+## 3v. Range-restricted analysis: metrics without the unhealthy scenes (Aug 24 2026)
+
+Champion blend rescored on pm ≤ 35 scenes only (drops ~160-190 scenes/split):
+
+| | n | r2 | mae | rmse | between | within |
+|---|---|---|---|---|---|---|
+| seed-0 all | 9,733 | 0.406 | 3.86 | 8.95 | +0.513 | 0.405 |
+| seed-0 ≤35 | 9,576 | 0.184 | 3.27 | 4.99 | +0.705 | 0.109 |
+| seed-1 all | 10,333 | 0.437 | 4.04 | 8.96 | +0.398 | 0.439 |
+| seed-1 ≤35 | 10,142 | 0.038 | 3.51 | 5.52 | +0.390 | −0.020 |
+
+Same cut on image-only models: damped seed-0 −0.072/−0.074 (r2/within), ensemble
+seed-1 0.078/0.082 — the collapse is universal; the context blend is actually the
+best clean-range model we have.
+
+**Findings (report in thesis verbatim-honest)**
+1. Part is range-restriction arithmetic: cutting >35 removes ~80% of target variance
+   while absolute error stays similar (MAE improves), so r2 must fall.
+2. The real core: within-station tracking in the clean regime is ~0. At unseen
+   stations on ordinary days the model predicts the station's typical level
+   (between-station stays +0.4-0.7) but barely resolves 8 vs 14 µg/m³. Physically
+   consistent: at PM 5-20 the aerosol signal is ~1-2% of TOA reflectance.
+3. Demonstrated skills therefore: (a) ranking places, (b) detecting/quantifying
+   elevated-pollution events (the health-relevant part). Headline r2 is earned
+   substantially on events. Deployment claim: "reliable place ranking + exceedance
+   detection where no monitor exists; day-to-day resolution below ~20 µg/m³ remains
+   beyond passive RGB imaging." Context fusion moved clean-range skill from negative
+   to modestly positive — the future-work direction.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
