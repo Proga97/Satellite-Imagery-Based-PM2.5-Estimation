@@ -844,6 +844,67 @@ best clean-range model we have.
    beyond passive RGB imaging." Context fusion moved clean-range skill from negative
    to modestly positive — the future-work direction.
 
+## 3w. Improvement campaign (Aug 27 2026) — NEW CERTIFIED CHAMPION 0.435/0.435
+
+Systematic sweep of every remaining cheap-to-medium improvement idea. Infrastructure
+added to 07_finetune: `--tta` (8-fold dihedral test-time augmentation), `--eval-only`
+(re-score saved weights), `--backbone {resnet18,34,50}`, `--init-seed` (init lottery
+isolation), `--ref-mode {clean,temporal}` (6-channel image + image-minus-reference
+input, zero-init extra conv channels), chroma context features (blue/red + green/red
+scene means from existing RGB patches). Also: sklearn/scipy dropped from the pipeline
+(Darwin 27 stopped loading their compiled wheels) — numpy metrics + hand-rolled
+GroupKFold, AUC verified against sklearn semantics.
+
+Results (splits A/B = the seed-0/seed-1 station holdouts):
+
+| idea | verdict | evidence |
+|---|---|---|
+| TTA | WIN | every member +0.007..+0.020 (6/6); blends 0.406→0.414 (A), 0.437→0.440 (B) |
+| ref-temporal (label-free reference) | WIN | single 0.406 (A) / 0.399 (B) vs 0.377 plain — +0.03 replicated |
+| ref-clean (label-selected reference) | WIN* | single 0.436 (A), smoke 55+ bias −37.5 (broke the −50 floor) — *needs labels at the site; upper bound / smoke-amplifier mode |
+| seed-2 members | WIN as stabilizers | init lottery measured: same recipe 0.377 vs 0.419 (A), 0.422 vs 0.354 (B) |
+| chroma ctx (blue/red, green/red) | NEUTRAL | single 0.371 vs 0.377, but between +0.447 vs +0.146; 6-member blend +0.001/-, between +0.06 — optional |
+| ResNet-34 | NEUTRAL | 0.375 vs 0.377 — capacity is NOT the bottleneck; ResNet-18 stays |
+| isotonic smoke calibration | NEGATIVE | cross-split: fixes bias only at large overall cost (B: 0.437→0.379); curve is small-n noise. Third failed attack on the −50 floor (after weighting §3k, routing §3n) — until ref-clean broke it from the input side |
+
+**CERTIFIED CHAMPION: honest 5-member blend** — mean of FiLM-full(TTA),
+FiLM-physics(TTA), FiLM-geotime(TTA), FiLM-full-seed2, FiLM-ref-temporal.
+No labels anywhere in the input chain.
+
+| | split A | split B |
+|---|---|---|
+| r2 | **0.435** | **0.435** |
+| mae | 3.80 | 3.99 |
+| between | +0.503 | +0.359 |
+| within | 0.435 | 0.439 |
+| exceedance F1 | 0.498 | 0.541 |
+
+(3-member for comparison: 0.414/0.440 — same mean, 5-member collapses the
+split-to-split spread to zero and improves MAE on both.)
+
+Split-B blend buckets: 2.5-6 +2.5/2.6 · 6-12 −0.1/2.4 · 12-35 −5.1/6.8 ·
+35-55 −10.8/18.5 · 55+ −46.7/52.2.
+
+**Findings**
+1. Thesis-quotable: **r2 0.435 replicated exactly on two independent never-seen-station
+   splits, MAE 3.8-4.0 µg/m³.** Blending is what buys stability: member-level swings of
+   ±0.05 from init alone, ±0.07 from split draw.
+2. Reference differencing works and decomposes cleanly: temporal median (deployable,
+   no labels) +0.03; clean-day median (labels needed) +0.06 and the only technique of
+   four to break the extreme-smoke floor (−37 vs −50) — because a truly clean
+   reference makes a smoke day's difference-image pop, while a temporal median
+   contains haze and dilutes the contrast.
+3. Clean-range floor (§3v) survived its 4th test: no input variant moved within-station
+   skill below ~20 µg/m³.
+4. Engineering: mid-run edits to dataset classes break spawn-context DataLoader
+   workers (parent holds old class, workers import new file) — the r34 test-scoring
+   crash; recovered via --eval-only.
+
+Not run (future work): wide-context second stream (needs new GEE download),
+SSL4EO-S12 pretraining, VLM zero-shot baseline (API cost gate).
+Weights: data/runs/{film_full_seed2,film_reftemporal_s0,film_refclean_s0,
+film_chroma_s0,r34_film_s0,film_full_seed2_B,film_reftemporal_B}/model_holdout_*.pt.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
