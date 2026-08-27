@@ -72,7 +72,7 @@ EXTRA_CTX_COLS = ["blue_red", "green_red"]
 class PatchDataset(Dataset):
     def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool,
                  band_stats: tuple | None = None, classify_threshold: float | None = None,
-                 ctx_stats: tuple | None = None):
+                 ctx_stats: tuple | None = None, ref_mode: str | None = None):
         self.rows = rows.reset_index(drop=True)
         self.root = patch_root
         self.gain = gain
@@ -80,6 +80,8 @@ class PatchDataset(Dataset):
         self.band_stats = band_stats  # (mean[C], std[C]) in reflectance units, or None for RGB path
         self.classify_threshold = classify_threshold
         self.ctx_stats = ctx_stats
+        self.ref_mode = ref_mode
+        self._ref_cache: dict = {}
         if ctx_stats is not None:
             cm, cs = ctx_stats
             self.ctx = ((self.rows[CTX_COLS].to_numpy(dtype=np.float32) - cm) / cs)
@@ -101,6 +103,17 @@ class PatchDataset(Dataset):
             img = np.clip(arr / 10000.0 * self.gain, 0, 1)
             img = (img - IMAGENET_MEAN) / IMAGENET_STD
         img = torch.from_numpy(img.transpose(2, 0, 1))
+        if self.ref_mode:
+            sid = r["station_id"]
+            ref = self._ref_cache.get(sid)
+            if ref is None:
+                ra = np.load(self.root.parent / "refs" / f"{sid}_{self.ref_mode}.npy")
+                ref = np.clip(ra.astype(np.float32) / 10000.0 * self.gain, 0, 1)
+                ref = (ref - IMAGENET_MEAN) / IMAGENET_STD
+                ref = torch.from_numpy(ref.transpose(2, 0, 1))
+                self._ref_cache[sid] = ref
+            # channels 4-6: normalized difference today-minus-reference (surface cancels)
+            img = torch.cat([img, img - ref], dim=0)
         if self.train:
             if torch.rand(1) < 0.5:
                 img = torch.flip(img, dims=[2])
@@ -171,6 +184,13 @@ def make_fused(in_ch: int, n_ctx: int, fusion: str, backbone: str = "resnet18") 
                  "resnet50": (tvm.resnet50, tvm.ResNet50_Weights.IMAGENET1K_V2, 2048)}
     fn, weights, feat_dim = factories[backbone]
     bb = fn(weights=weights)
+    if in_ch != 3:
+        old = bb.conv1.weight.data
+        conv1 = nn.Conv2d(in_ch, old.shape[0], kernel_size=7, stride=2, padding=3, bias=False)
+        w = torch.zeros(old.shape[0], in_ch, 7, 7)
+        w[:, :3] = old  # pretrained RGB filters; extra (diff) channels start at zero
+        conv1.weight.data = w
+        bb.conv1 = conv1
     bb.fc = nn.Identity()
     return FusedNet(bb, n_ctx, fusion, feat_dim=feat_dim)
 
@@ -279,6 +299,8 @@ def main() -> int:
                         help="8-fold dihedral test-time augmentation at prediction")
     parser.add_argument("--init-seed", type=int, default=None,
                         help="torch RNG seed for model init only (split unchanged)")
+    parser.add_argument("--ref-mode", choices=["clean", "temporal"], default=None,
+                        help="6-channel input: image + (image - station reference median)")
     parser.add_argument("--eval-only", default=None, metavar="WEIGHTS",
                         help="skip training: load these weights, rebuild the identical "
                              "split from --seed, and re-score the test set")
@@ -318,6 +340,13 @@ def main() -> int:
                             how="left")
         n_bad = table[ALL_CTX_COLS].isna().any(axis=1).sum()
         table = table.dropna(subset=ALL_CTX_COLS).reset_index(drop=True)
+        if args.ref_mode:
+            refs_dir = patch_root.parent / "refs"
+            have_ref = {f.name.rsplit("_", 1)[0] for f in refs_dir.glob(f"*_{args.ref_mode}.npy")}
+            n0 = len(table)
+            table = table[table.station_id.isin(have_ref)].reset_index(drop=True)
+            print(f"ref-mode {args.ref_mode}: {len(table)} rows at {table.station_id.nunique()} "
+                  f"stations with references ({n0 - len(table)} dropped)")
         extra_sel = [c for c in CTX_COLS if c in EXTRA_CTX_COLS]
         if extra_sel:
             n0 = len(table)
@@ -412,7 +441,7 @@ def main() -> int:
                                   band_stats=band_stats,
                                   classify_threshold=(args.classify_threshold
                                                       if args.task == "classify" else None),
-                                  ctx_stats=ctx_stats)
+                                  ctx_stats=ctx_stats, ref_mode=args.ref_mode)
                 if train and (args.oversample_high > 1.0 or args.bucket_weights):
                     import numpy as _np
                     from torch.utils.data import WeightedRandomSampler
@@ -432,6 +461,8 @@ def main() -> int:
                     return DataLoader(ds, sampler=sampler, **loader_kw)
                 return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
+            if args.ref_mode:
+                in_ch += 3
             n_ctx = len(CTX_COLS) if args.context else 0
             if args.init_seed is not None:
                 torch.manual_seed(args.init_seed)
