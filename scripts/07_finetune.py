@@ -117,22 +117,23 @@ class PatchDataset(Dataset):
 
 class FusedNet(nn.Module):
     """ResNet-18 backbone + context fusion (concat at head, or late FiLM)."""
-    def __init__(self, backbone: nn.Module, n_ctx: int, fusion: str):
+    def __init__(self, backbone: nn.Module, n_ctx: int, fusion: str, feat_dim: int = 512):
         super().__init__()
         self.backbone = backbone          # fc already Identity
         self.n_ctx = n_ctx
         self.fusion = fusion
+        self.feat_dim = feat_dim
         if n_ctx == 0:
-            self.head = nn.Linear(512, 1)
+            self.head = nn.Linear(feat_dim, 1)
         elif fusion == "concat":
             self.ctx_mlp = nn.Sequential(nn.Linear(n_ctx, 64), nn.ReLU(),
                                          nn.Linear(64, 64), nn.ReLU())
-            self.head = nn.Sequential(nn.Linear(512 + 64, 128), nn.ReLU(),
+            self.head = nn.Sequential(nn.Linear(feat_dim + 64, 128), nn.ReLU(),
                                       nn.Linear(128, 1))
-        else:  # film: context produces per-feature scale+shift for the 512-d features
+        else:  # film: context produces per-feature scale+shift for the image features
             self.film = nn.Sequential(nn.Linear(n_ctx, 128), nn.ReLU(),
-                                      nn.Linear(128, 1024))
-            self.head = nn.Sequential(nn.Linear(512, 128), nn.ReLU(),
+                                      nn.Linear(128, 2 * feat_dim))
+            self.head = nn.Sequential(nn.Linear(feat_dim, 128), nn.ReLU(),
                                       nn.Linear(128, 1))
 
     def forward(self, x, ctx):
@@ -142,7 +143,7 @@ class FusedNet(nn.Module):
         if self.fusion == "concat":
             return self.head(torch.cat([f, self.ctx_mlp(ctx)], dim=1))
         gb = self.film(ctx)
-        gamma, beta = gb[:, :512], gb[:, 512:]
+        gamma, beta = gb[:, :self.feat_dim], gb[:, self.feat_dim:]
         return self.head(f * (1 + gamma) + beta)
 
 
@@ -161,11 +162,15 @@ def make_model(in_ch: int = 3) -> nn.Module:
     return m
 
 
-def make_fused(in_ch: int, n_ctx: int, fusion: str) -> nn.Module:
-    from torchvision.models import resnet18, ResNet18_Weights
-    bb = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+def make_fused(in_ch: int, n_ctx: int, fusion: str, backbone: str = "resnet18") -> nn.Module:
+    import torchvision.models as tvm
+    factories = {"resnet18": (tvm.resnet18, tvm.ResNet18_Weights.IMAGENET1K_V1, 512),
+                 "resnet34": (tvm.resnet34, tvm.ResNet34_Weights.IMAGENET1K_V1, 512),
+                 "resnet50": (tvm.resnet50, tvm.ResNet50_Weights.IMAGENET1K_V2, 2048)}
+    fn, weights, feat_dim = factories[backbone]
+    bb = fn(weights=weights)
     bb.fc = nn.Identity()
-    return FusedNet(bb, n_ctx, fusion)
+    return FusedNet(bb, n_ctx, fusion, feat_dim=feat_dim)
 
 
 def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
@@ -214,12 +219,22 @@ def train_one(model, train_dl, val_dl, device, epochs, lr, max_patience=3,
     return model
 
 
-def predict(model, dl, device):
+def predict(model, dl, device, tta: bool = False):
     model.eval()
     preds = []
     with torch.no_grad():
         for x, cx, _ in dl:
-            preds.append(model(x.to(device), cx.to(device)).squeeze(-1).cpu().numpy())
+            x, cx = x.to(device), cx.to(device)
+            if not tta:
+                preds.append(model(x, cx).squeeze(-1).cpu().numpy())
+                continue
+            # 8-fold dihedral TTA: 4 rotations x optional mirror, averaged in log space
+            outs = []
+            for flip in (False, True):
+                xf = torch.flip(x, dims=[3]) if flip else x
+                for k in range(4):
+                    outs.append(model(torch.rot90(xf, k, dims=[2, 3]), cx).squeeze(-1))
+            preds.append(torch.stack(outs).mean(0).cpu().numpy())
     return np.expm1(np.concatenate(preds))
 
 
@@ -256,6 +271,13 @@ def main() -> int:
     parser.add_argument("--ctx-cols", default=None,
                         help="ablation: comma-separated subset of context columns "
                              "(overrides the default 11; sample set stays identical)")
+    parser.add_argument("--backbone", choices=["resnet18", "resnet34", "resnet50"],
+                        default="resnet18")
+    parser.add_argument("--tta", action="store_true",
+                        help="8-fold dihedral test-time augmentation at prediction")
+    parser.add_argument("--eval-only", default=None, metavar="WEIGHTS",
+                        help="skip training: load these weights, rebuild the identical "
+                             "split from --seed, and re-score the test set")
     parser.add_argument("--task", choices=["regress", "classify"], default="regress",
                         help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
     parser.add_argument("--classify-threshold", type=float, default=20.0)
@@ -402,7 +424,21 @@ def main() -> int:
                 return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
             n_ctx = len(CTX_COLS) if args.context else 0
-            model = make_fused(in_ch, n_ctx, args.fusion).to(device)
+            model = make_fused(in_ch, n_ctx, args.fusion, args.backbone).to(device)
+            if args.eval_only:
+                ck = torch.load(args.eval_only, map_location=device)
+                model.load_state_dict(ck["state_dict"] if "state_dict" in ck else ck)
+                print(f"  eval-only: loaded {args.eval_only}")
+                y_pred = predict(model, dl(te, False), device, tta=args.tta)
+                m = compute_metrics(te["pm25"].to_numpy(), y_pred, te["station_id"].to_numpy())
+                m.update(split=split_name, fold=fold, n_test=len(te))
+                all_rows.append(m)
+                pd.DataFrame({"station_id": te["station_id"], "week_start": te["week_start"],
+                              "y_true": te["pm25"], "y_pred": y_pred}).to_parquet(
+                    run_dir / f"preds_{split_name}_f{fold}.parquet", index=False)
+                print(f"  -> r2={m['r2']:.3f} rmse={m['rmse']:.2f} "
+                      f"between={m['between_station_r2']:.3f} within={m['within_station_r2']:.3f}")
+                continue
             loss_fn = None
             if args.task == "classify":
                 pos = float((tr2["pm25"] > args.classify_threshold).sum())
