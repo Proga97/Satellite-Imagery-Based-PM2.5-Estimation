@@ -25,8 +25,11 @@ STATE_COLORS = [BLUE, GREEN, "#e67e22", "#8e44ad", RED]
 KEYS = ["station_id", "week_start"]
 STATE_OF = {"06": "CA", "48": "TX", "36": "NY", "53": "WA", "17": "IL"}
 ORDER = ["CA", "WA", "TX", "IL", "NY"]
-SPLIT_A = ["fused_film", "fused_film_nolatlon", "fused_film_geotime"]
-SPLIT_B = ["reval_film_full", "reval_film_nolatlon", "reval_film_geotime"]
+# certified 5-member honest blend (§3w): TTA'd trio + seed-2 + temporal-reference
+SPLIT_A = ["tta_film_s0", "tta_nolatlon_s0", "tta_geotime_s0",
+           "film_full_seed2", "film_reftemporal_s0"]
+SPLIT_B = ["tta_film_s1", "tta_nolatlon_s1", "tta_geotime_s1",
+           "film_full_seed2_B", "film_reftemporal_B"]
 BUCK = [(2.5, 6, "2.5–6"), (6, 12, "6–12"), (12, 35, "12–35"), (35, 55, "35–55"), (55, 1e9, "55+")]
 
 
@@ -40,6 +43,7 @@ def blend(runs):
     b = dfs[0][KEYS + ["y_true"]].copy()
     for i, d in enumerate(dfs):
         b[f"m{i}"] = b.set_index(KEYS).index.map(d.set_index(KEYS).y_pred)
+    b = b.dropna().reset_index(drop=True)
     b["y_pred"] = b[[f"m{i}" for i in range(len(dfs))]].mean(axis=1)
     return b
 
@@ -63,10 +67,11 @@ def fig1():  # story arc (§2 ladder + §3p/§3t)
               ("+ wildfire era,\nfine-tuned end-to-end\n(CA only)", 0.39),
               ("5 states,\nrare-event weighting\n(damped)", 0.31),
               ("Image-only\nensemble ×3\n(certified §3p)", 0.362),
-              ("Triple-FiLM\ncontext blend\n(certified §3t)", 0.437)]
+              ("Triple-FiLM\ncontext blend\n(certified §3t)", 0.437),
+              ("5-member blend\n+TTA +references\n(certified §3w)", 0.435)]
     fig, ax = plt.subplots(figsize=(9, 4.2))
     vals = [v for _, v in stages]
-    ax.bar(range(len(stages)), vals, color=[GRAY]*4 + [LTBLUE, BLUE], width=0.62)
+    ax.bar(range(len(stages)), vals, color=[GRAY]*4 + [LTBLUE, LTBLUE, BLUE], width=0.62)
     for x, v in enumerate(vals):
         ax.text(x, v + 0.008, f"{v:.2f}", ha="center", fontweight="bold")
     ax.set_xticks(range(len(stages)))
@@ -78,8 +83,8 @@ def fig1():  # story arc (§2 ladder + §3p/§3t)
 
 def fig2():
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.4), sharex=True, sharey=True)
-    for ax, b, ttl, r2 in [(axes[0], blend(SPLIT_A), "Split A (seed 0)", 0.406),
-                           (axes[1], blend(SPLIT_B), "Split B (seed 1)", 0.437)]:
+    for ax, b, ttl, r2 in [(axes[0], blend(SPLIT_A), "Split A (seed 0)", 0.435),
+                           (axes[1], blend(SPLIT_B), "Split B (seed 1)", 0.435)]:
         ax.scatter(b.y_true, b.y_pred, s=4, alpha=0.18, color=BLUE, edgecolors="none")
         lim = [2, 300]
         ax.plot(lim, lim, "k--", lw=0.8)
@@ -88,7 +93,7 @@ def fig2():
         ax.set_title(f"{ttl} — R²={r2:.3f}, n={len(b):,}")
         ax.set_xlabel("EPA measured PM2.5 (µg/m³)")
     axes[0].set_ylabel("Predicted PM2.5 (µg/m³)")
-    fig.suptitle("Champion (triple-FiLM blend) at held-out stations", y=1.0)
+    fig.suptitle("Champion (5-member FiLM blend, §3w) at held-out stations", y=1.0)
     save(fig, "fig2_champion_scatter.png")
 
 
@@ -426,8 +431,8 @@ def fig19():  # §3k numbers
 
 def fig20():
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.2), sharex=True, sharey=True)
-    for ax, runs, ttl, bt in [(axes[0], SPLIT_A, "Split A", 0.513),
-                              (axes[1], SPLIT_B, "Split B", 0.398)]:
+    for ax, runs, ttl, bt in [(axes[0], SPLIT_A, "Split A", 0.503),
+                              (axes[1], SPLIT_B, "Split B", 0.359)]:
         g = blend(runs).groupby("station_id")[["y_true", "y_pred"]].mean()
         ax.scatter(g.y_true, g.y_pred, s=32, color=BLUE, alpha=0.8)
         lim = [4, 20]
@@ -495,9 +500,31 @@ def fig23():
     save(fig, "fig23_member_diversity.png")
 
 
+def fig24():  # §3w campaign summary
+    items = [("TTA (8-view averaging)", 0.017, GREEN),
+             ("Temporal reference (deployable)", 0.029, GREEN),
+             ("Clean reference (needs labels)", 0.059, GREEN),
+             ("Chromatic band ratios", -0.006, GRAY),
+             ("ResNet-34 capacity", -0.002, GRAY),
+             ("Isotonic smoke calibration", -0.058, RED)]
+    fig, ax = plt.subplots(figsize=(8, 3.8))
+    v = [x for _, x, _ in items]
+    ax.barh(range(len(items)), v, color=[c for _, _, c in items], height=0.6)
+    ax.axvline(0, color="k", lw=0.8)
+    for i, x in enumerate(v):
+        ax.text(x + (0.002 if x >= 0 else -0.002), i, f"{x:+.3f}",
+                va="center", ha="left" if x >= 0 else "right", fontsize=8.5)
+    ax.set_yticks(range(len(items)))
+    ax.set_yticklabels([n for n, _, _ in items], fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("single-model R² change vs plain FiLM (same split)")
+    ax.set_title("Improvement campaign verdicts (§3w) — what helped, what didn't")
+    save(fig, "fig24_campaign_verdicts.png")
+
+
 ALL = {f"fig{i}": fn for i, fn in enumerate(
     [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8, fig9, fig10, fig11, fig12, fig13,
-     fig14, fig15, fig16, fig17, fig18, fig19, fig20, fig21, fig22, fig23], start=1)}
+     fig14, fig15, fig16, fig17, fig18, fig19, fig20, fig21, fig22, fig23, fig24], start=1)}
 
 if __name__ == "__main__":
     targets = sys.argv[1:] or list(ALL)
