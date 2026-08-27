@@ -275,6 +275,8 @@ def main() -> int:
                         default="resnet18")
     parser.add_argument("--tta", action="store_true",
                         help="8-fold dihedral test-time augmentation at prediction")
+    parser.add_argument("--init-seed", type=int, default=None,
+                        help="torch RNG seed for model init only (split unchanged)")
     parser.add_argument("--eval-only", default=None, metavar="WEIGHTS",
                         help="skip training: load these weights, rebuild the identical "
                              "split from --seed, and re-score the test set")
@@ -424,6 +426,8 @@ def main() -> int:
                 return DataLoader(ds, shuffle=train, **loader_kw)
             in_ch = 3 if band_stats is None else len(band_stats[0])
             n_ctx = len(CTX_COLS) if args.context else 0
+            if args.init_seed is not None:
+                torch.manual_seed(args.init_seed)
             model = make_fused(in_ch, n_ctx, args.fusion, args.backbone).to(device)
             if args.eval_only:
                 ck = torch.load(args.eval_only, map_location=device)
@@ -464,8 +468,8 @@ def main() -> int:
                     for x, cx, _ in dl(te, False):
                         probs.append(_t.sigmoid(model(x.to(device), cx.to(device)).squeeze(-1)).cpu().numpy())
                 y_pred = np.concatenate(probs)
-                from sklearn.metrics import roc_auc_score
-                auc = roc_auc_score((te["pm25"] > args.classify_threshold).to_numpy(), y_pred)
+                from thesis.models.metrics import roc_auc
+                auc = roc_auc((te["pm25"] > args.classify_threshold).to_numpy(), y_pred)
                 print(f"  -> classifier AUC = {auc:.4f}")
                 pd.DataFrame({"station_id": te["station_id"], "week_start": te["week_start"],
                               "y_true": te["pm25"], "y_pred": y_pred}).to_parquet(
