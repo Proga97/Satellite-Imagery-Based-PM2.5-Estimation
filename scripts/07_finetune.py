@@ -340,13 +340,6 @@ def main() -> int:
                             how="left")
         n_bad = table[ALL_CTX_COLS].isna().any(axis=1).sum()
         table = table.dropna(subset=ALL_CTX_COLS).reset_index(drop=True)
-        if args.ref_mode:
-            refs_dir = patch_root.parent / "refs"
-            have_ref = {f.name.rsplit("_", 1)[0] for f in refs_dir.glob(f"*_{args.ref_mode}.npy")}
-            n0 = len(table)
-            table = table[table.station_id.isin(have_ref)].reset_index(drop=True)
-            print(f"ref-mode {args.ref_mode}: {len(table)} rows at {table.station_id.nunique()} "
-                  f"stations with references ({n0 - len(table)} dropped)")
         extra_sel = [c for c in CTX_COLS if c in EXTRA_CTX_COLS]
         if extra_sel:
             n0 = len(table)
@@ -357,6 +350,13 @@ def main() -> int:
     if args.bands != "rgb":
         subdir = f"{subdir}_{args.bands}"
     patch_root = cfg.path("patches_dir") / args.product / subdir
+    if args.ref_mode:
+        refs_dir = patch_root.parent / "refs"
+        have_ref = {f.name.rsplit("_", 1)[0] for f in refs_dir.glob(f"*_{args.ref_mode}.npy")}
+        n0 = len(table)
+        table = table[table.station_id.isin(have_ref)].reset_index(drop=True)
+        print(f"ref-mode {args.ref_mode}: {len(table)} rows at {table.station_id.nunique()} "
+              f"stations with references ({n0 - len(table)} dropped)")
     # all-bands: keep only samples whose 13-band patch exists (download may trail RGB)
     if args.bands != "rgb":
         has = table.apply(lambda r: (patch_root / r["station_id"] /
