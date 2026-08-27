@@ -65,6 +65,8 @@ CTX_COLS = ["lat", "lon", "elevation_m", "temp_c", "rh", "wind_speed", "precip_m
 # frozen full list: sample filtering always uses this so every fused experiment
 # trains on the same 52,315 scenes / same stratified split regardless of ctx subset
 ALL_CTX_COLS = list(CTX_COLS)
+# optional extras selectable via --ctx-cols (scene-mean band ratios; haze scatters blue)
+EXTRA_CTX_COLS = ["blue_red", "green_red"]
 
 
 class PatchDataset(Dataset):
@@ -292,7 +294,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.ctx_cols:
         sel = [c.strip() for c in args.ctx_cols.split(",")]
-        bad = [c for c in sel if c not in ALL_CTX_COLS]
+        bad = [c for c in sel if c not in ALL_CTX_COLS + EXTRA_CTX_COLS]
         if bad:
             raise SystemExit(f"unknown context columns: {bad}")
         CTX_COLS[:] = sel
@@ -316,6 +318,11 @@ def main() -> int:
                             how="left")
         n_bad = table[ALL_CTX_COLS].isna().any(axis=1).sum()
         table = table.dropna(subset=ALL_CTX_COLS).reset_index(drop=True)
+        extra_sel = [c for c in CTX_COLS if c in EXTRA_CTX_COLS]
+        if extra_sel:
+            n0 = len(table)
+            table = table.dropna(subset=extra_sel).reset_index(drop=True)
+            print(f"extra ctx {extra_sel}: dropped {n0 - len(table)} rows missing them")
         print(f"context joined: {len(table)} rows ({n_bad} dropped for missing context)")
     subdir = {"median": "weekly", "single": "single", "scene": "scenes"}[args.mode]
     if args.bands != "rgb":
