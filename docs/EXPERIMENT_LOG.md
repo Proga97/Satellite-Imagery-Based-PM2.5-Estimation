@@ -7,6 +7,45 @@ Numbers quoted below are means over folds/seeds; fold-level detail is in
 
 ---
 
+## 0. Thesis research questions (decided Sep 21 2026, pending advisor sign-off)
+
+These replace the two questions in the approved proposal.
+
+**RQ1.** How accurately can PM2.5 be estimated from Sentinel-2 imagery at monitoring
+stations never seen during training?
+
+**RQ2.** Does adding spatial, temporal and meteorological context improve estimation at
+unmonitored locations, and does the fusion method matter?
+
+Scope of the RQ2 terms, as built (scripts/10_context_features.py):
+- spatial: latitude, longitude, SRTM elevation
+- temporal: day of year (sin/cos), solar elevation at the overpass minute
+- meteorological: ERA5-Land daily 2 m temperature, relative humidity (from dewpoint),
+  10 m wind speed, total precipitation, surface pressure
+
+Where the evidence lives:
+- RQ1: certified 5-member blend r2 0.435 on both station splits (§3w); skill split into
+  places / episodes / day-to-day change (between/within decomposition throughout,
+  range-restricted analysis §3v, exceedance metrics §3t, §3w).
+- RQ2: concat vs FiLM (§3q), lat/lon and geo+time ablations (§3r, §3s), two-split
+  certification (§3t), campaign (§3w).
+
+Changes from the proposal and why:
+- Proposal RQ1 listed "aggregated PM2.5" as a context input. Never used: it would
+  require a monitor at the prediction site.
+- Proposal RQ2 (daily/weekly/monthly label aggregation) dropped as a research question.
+  The §3u result is one run per arm on one split; the weekly arm's 0.056 drop is inside
+  the measured ±0.05 initialization noise (§3w), no monthly arm, stability unmeasured.
+  Kept only as a caveated secondary analysis.
+- The 0.00 → 0.39 rescue arc (§2) is methodology justification, not a research question.
+
+Known gap for RQ2: image-only and context models were trained on slightly different
+scene sets (fused runs drop 2,032 scenes lacking ERA5-Land weather) and splits. A
+like-for-like image-only baseline on the identical 52,315 scenes and split has not been
+run.
+
+---
+
 ## 1. Dataset construction
 
 ### Ground truth (labels)
