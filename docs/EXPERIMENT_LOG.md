@@ -944,6 +944,49 @@ SSL4EO-S12 pretraining, VLM zero-shot baseline (API cost gate).
 Weights: data/runs/{film_full_seed2,film_reftemporal_s0,film_refclean_s0,
 film_chroma_s0,r34_film_s0,film_full_seed2_B,film_reftemporal_B}/model_holdout_*.pt.
 
+## 3x. Solar-elevation ablation (Sep 21-22 2026) — INPUT RETAINED, champion unchanged
+
+Question: is the computed solar-elevation input (NOAA formula from lat/lon and the
+overpass timestamp) needed? At the fixed ~10:30 local Sentinel-2 overpass it is nearly
+a function of latitude and day of year, both of which the model already has.
+
+Protocol: the four champion members that take the input (full-context, physics-only,
+seed-2 full-context, temporal-reference) retrained on both splits without it — same
+52,315 scenes, same stratified splits, same recipe, `--ctx-cols` minus sun_elev_deg.
+Full and physics members re-scored with 8-fold TTA as in §3w. The geo+time member never
+used the input, so its §3w predictions were reused. 8 trainings + 4 TTA evals.
+
+Single models (holdout r2, pre-TTA; between-station in parentheses):
+
+| member | split A with | split A without | split B with | split B without |
+|---|---|---|---|---|
+| full-context | 0.377 (+0.15) | 0.392 (+0.36) | 0.422 (+0.27) | 0.327 (+0.06) |
+| physics-only | 0.304 (+0.48) | 0.347 (+0.27) | 0.382 (+0.34) | 0.200 (+0.30) |
+| seed-2 full | 0.419 (+0.02) | 0.372 (−0.01) | 0.354 (+0.08) | 0.367 (+0.01) |
+| temporal-ref | 0.406 (+0.34) | 0.421 (+0.62) | 0.399 (+0.39) | 0.370 (+0.14) |
+
+Five-member blends:
+
+| | split A | split B |
+|---|---|---|
+| with sun angle (certified §3w) | 0.435 · MAE 3.80 · between +0.50 | 0.435 · MAE 3.99 · between +0.36 |
+| without | 0.438 · MAE 3.85 · between +0.59 | 0.399 · MAE 4.03 · between +0.27 |
+
+**Findings**
+1. Split A: no effect (mean single-model change +0.006; blend +0.003). Split B: two
+   members dropped well outside the ±0.05 init noise (full −0.095, physics −0.18);
+   blend −0.036. The physics-only member has no lat/lon, so solar elevation was its
+   only latitude proxy — the loss concentrates there.
+2. Retrained models often had BETTER validation loss (full-B 0.0958, project best) yet
+   worse test scores: split B's held-out stations are sensitive to the input set in a
+   way validation stations are not. Another reason to trust only two-split blends.
+3. Decision (Pranay, Sep 22): keep the input; accuracy takes priority. Certified
+   champion and its 0.435/0.435 stand. Code default restored to 11 features.
+
+Thesis use: report as an ablation justifying the derived input ("removal changed the
+blend by +0.003 on split A and −0.036 on split B; retained").
+Weights: data/runs/nosun_{full,phys,seed2,ref}_{A,B}/ and tta_nosun_{full,phys}_{A,B}/.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
