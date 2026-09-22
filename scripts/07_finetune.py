@@ -60,16 +60,13 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
-# Default context vector (10 features). Solar elevation was removed from the model
-# inputs on 2026-09-21 (log section 3x): it is a formula of lat/lon/time, and at the fixed
-# ~10:30 local Sentinel-2 overpass it is nearly determined by latitude + day of year.
+# Default context vector (11 features). Solar elevation is kept: a removal ablation
+# (log section 3x, Sep 2026) cost 0.036 R2 on split B, so the certified champion keeps it.
 CTX_COLS = ["lat", "lon", "elevation_m", "temp_c", "rh", "wind_speed", "precip_mm",
-            "pressure_hpa", "doy_sin", "doy_cos"]
-# frozen filter list: sample filtering always uses this (it still includes sun_elev_deg,
-# which is no longer a model input) so every fused experiment, old and new, trains on
-# the same 52,315 scenes / same stratified split regardless of ctx subset. Pre-removal
-# 11-feature models stay reproducible via an explicit --ctx-cols list.
-ALL_CTX_COLS = CTX_COLS[:8] + ["sun_elev_deg"] + CTX_COLS[8:]
+            "pressure_hpa", "sun_elev_deg", "doy_sin", "doy_cos"]
+# frozen full list: sample filtering always uses this so every fused experiment
+# trains on the same 52,315 scenes / same stratified split regardless of ctx subset
+ALL_CTX_COLS = list(CTX_COLS)
 # optional extras selectable via --ctx-cols (scene-mean band ratios; haze scatters blue)
 EXTRA_CTX_COLS = ["blue_red", "green_red"]
 
@@ -290,7 +287,7 @@ def main() -> int:
                         metavar=("W_2.5-6", "W_6-12", "W_12-35", "W_35-55", "W_55+"),
                         help="per-bucket sampling weights (overrides --oversample-high)")
     parser.add_argument("--context", action="store_true",
-                        help="fuse 10 context features (met/elev/season/latlon)")
+                        help="fuse 11 context features (met/elev/sun/season/latlon)")
     parser.add_argument("--fusion", choices=["concat", "film"], default="concat",
                         help="context fusion: concat at head, or FiLM modulation of features")
     parser.add_argument("--no-latlon", action="store_true",
