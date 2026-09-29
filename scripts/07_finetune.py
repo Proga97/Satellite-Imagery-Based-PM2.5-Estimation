@@ -316,7 +316,11 @@ def main() -> int:
                              "test set stays complete")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    if args.ctx_cols:
+    if args.ctx_cols == "none":
+        # image-only model that still goes through the context join + row filter, so
+        # it trains on the identical 52,315-scene set and split as the fused models
+        CTX_COLS[:] = []
+    elif args.ctx_cols:
         sel = [c.strip() for c in args.ctx_cols.split(",")]
         bad = [c for c in sel if c not in ALL_CTX_COLS + EXTRA_CTX_COLS]
         if bad:
