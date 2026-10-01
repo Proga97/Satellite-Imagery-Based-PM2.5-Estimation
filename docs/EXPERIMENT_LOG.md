@@ -39,10 +39,8 @@ Changes from the proposal and why:
   Kept only as a caveated secondary analysis.
 - The 0.00 → 0.39 rescue arc (§2) is methodology justification, not a research question.
 
-Known gap for RQ2: image-only and context models were trained on slightly different
-scene sets (fused runs drop 2,032 scenes lacking ERA5-Land weather) and splits. A
-like-for-like image-only baseline on the identical 52,315 scenes and split has not been
-run.
+RQ2 like-for-like baseline: done, §3y (image-only 0.235/0.244 vs champion 0.435/0.435
+on identical scenes and splits).
 
 ---
 
@@ -986,6 +984,35 @@ Five-member blends:
 Thesis use: report as an ablation justifying the derived input ("removal changed the
 blend by +0.003 on split A and −0.036 on split B; retained").
 Weights: data/runs/nosun_{full,phys,seed2,ref}_{A,B}/ and tta_nosun_{full,phys}_{A,B}/.
+
+## 3y. RQ2 like-for-like image-only baseline (Sep 29-30 2026)
+
+Closes the gap noted in §0: the earlier image-only models (§3k, §3o/3p) trained on all
+54,347 scenes and a different station draw, so the context gain was never measured on
+one exam. Here `--ctx-cols none` runs the image-only model through the same context
+join and row filter (52,315 scenes, 2,032 coastal scenes dropped) and the same
+stratified splits as every fused model. Same recipe (damped weighting, min 12 epochs),
+8-fold TTA at scoring. Two trainings + two TTA evals.
+
+| model (all TTA-scored) | split A r2 | split B r2 | between A | between B |
+|---|---|---|---|---|
+| image-only | 0.235 | 0.244 | −0.20 | −0.13 |
+| FiLM full-context, single | 0.394 | 0.432 | +0.29 | +0.29 |
+| 5-member context blend (champion) | 0.435 | 0.435 | +0.50 | +0.36 |
+
+Pre-TTA image-only: 0.237 (A), 0.223 (B). TTA gave image-only −0.002/+0.021 vs
++0.007..+0.020 for every context model.
+
+**Findings (RQ2 answered like for like)**
+1. Context lifts a single model by +0.16 (A) / +0.19 (B) and the blend by +0.20 / +0.19,
+   on identical scenes and splits — far outside the ±0.05 init noise.
+2. Without context the model cannot rank unseen stations at all (between-station
+   negative on both splits); with it, +0.36..+0.50.
+3. Caveat for the thesis: this image-only model is trained on the context-filtered
+   52,315-scene set so the exam is identical; the all-scene image-only ensemble of
+   §3o/3p (0.362-0.367, 54,347 scenes, different draw) is the other reference point.
+   Report both and say why they differ.
+Weights: data/runs/imgonly_ctxset_{A,B}/, preds in tta_imgonly_{A,B}/.
 
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
