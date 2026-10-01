@@ -522,9 +522,392 @@ def fig24():  # §3w campaign summary
     save(fig, "fig24_campaign_verdicts.png")
 
 
+# ---------------------------------------------------------------------------
+# Figures 25-41: scene galleries, prediction contact sheets, maps, decompositions
+# ---------------------------------------------------------------------------
+PATCH_ROOT = Path("data/patches/l1c/scenes")
+REF_ROOT = Path("data/patches/l1c/refs")
+
+
+def load_patch(sid, key, gain=3.0):
+    a = np.load(PATCH_ROOT / sid / f"{key}.npy").astype(np.float32) / 10000.0
+    return np.clip(a[..., ::-1] * gain, 0, 1)  # stored B4,B3,B2 -> RGB
+
+
+def kept_scenes():
+    """Every kept scene with its label, state, and a patch on disk."""
+    lab = pd.read_parquet("data/interim/labels_scenehour.parquet")
+    lab["key"] = lab["scene_date"].astype(str).str[:10]
+    keep = pd.read_parquet("data/interim/scene_keep.parquet")
+    keep = keep[keep.keep][["station_id", "key"]]
+    df = lab.merge(keep, on=["station_id", "key"]).drop_duplicates(["station_id", "key"])
+    df["state"] = df.station_id.str[:2].map(STATE_OF)
+    df["date"] = pd.to_datetime(df.key)
+    df = df[[ (PATCH_ROOT / r.station_id / f"{r.key}.npy").exists() for r in df.itertuples()]]
+    return df.reset_index(drop=True)
+
+
+def stamp(ax, text, loc="bottom"):
+    y = 0.03 if loc == "bottom" else 0.97
+    va = "bottom" if loc == "bottom" else "top"
+    ax.text(0.03, y, text, transform=ax.transAxes, fontsize=7.5, color="w", va=va,
+            bbox=dict(boxstyle="round,pad=0.25", fc="black", alpha=0.65, ec="none"))
+
+
+def fig25():  # scene gallery across the pollution range
+    df = kept_scenes()
+    targets = [3, 6, 12, 25, 40, 60, 100, 150, 250, 400]
+    fig, axes = plt.subplots(2, 5, figsize=(12, 5.4))
+    used = set()
+    for ax, t in zip(axes.ravel(), targets):
+        cand = df.assign(d=(df.pm25 - t).abs()).sort_values("d")
+        cand = cand[~cand.station_id.isin(used)]
+        r = cand.iloc[0]
+        used.add(r.station_id)
+        ax.imshow(load_patch(r.station_id, r.key)); ax.axis("off")
+        ax.set_title(f"{r.pm25:.0f} µg/m³", fontsize=10, fontweight="bold")
+        stamp(ax, f"{r.state} {r.station_id}\n{r.key}")
+    fig.suptitle("Sentinel-2 patches (2.24 km) across the PM2.5 range, each with the EPA "
+                 "reading within ±1 h of the pass", y=1.0)
+    save(fig, "fig25_scene_gallery.png")
+
+
+def fig26():  # one station through a fire season
+    df = kept_scenes()
+    sid = "06-027-0002"
+    d = df[(df.station_id == sid) & (df.date >= "2020-08-01") & (df.date <= "2020-10-31")]
+    d = d.sort_values("date")
+    idx = np.linspace(0, len(d) - 1, min(8, len(d))).round().astype(int)
+    d = d.iloc[idx]
+    fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+    for ax, r in zip(axes.ravel(), d.itertuples()):
+        ax.imshow(load_patch(r.station_id, r.key)); ax.axis("off")
+        ax.set_title(f"{r.key}", fontsize=9)
+        stamp(ax, f"PM2.5 = {r.pm25:.1f}")
+    fig.suptitle(f"Station {sid} (San Joaquin Valley, CA) through the 2020 fire season", y=1.0)
+    save(fig, "fig26_fire_season_sequence.png")
+
+
+def fig27():  # same date, five states
+    df = kept_scenes()
+    cnt = df.groupby("key").state.nunique()
+    days = cnt[cnt == 5].index
+    best = df[df.key.isin(days)].groupby("key").size().sort_values(ascending=False).index[0]
+    d = df[df.key == best].sort_values("state")
+    d = d.groupby("state").head(1).set_index("state").loc[ORDER].reset_index()
+    fig, axes = plt.subplots(1, 5, figsize=(13, 3.4))
+    for ax, r in zip(axes, d.itertuples()):
+        ax.imshow(load_patch(r.station_id, r.key)); ax.axis("off")
+        ax.set_title(f"{r.state} · {r.pm25:.1f} µg/m³", fontsize=10, fontweight="bold")
+        stamp(ax, r.station_id)
+    fig.suptitle(f"Five states on the same date ({best}): what the model has to compare", y=1.02)
+    save(fig, "fig27_same_day_five_states.png")
+
+
+def fig28():  # reference image explained
+    sid = "06-027-0002"
+    ref = np.load(REF_ROOT / f"{sid}_temporal.npy").astype(np.float32) / 10000.0
+    ref = np.clip(ref[..., ::-1] * 3.0, 0, 1)
+    clean_key, clean_pm = "2020-07-10", 5.0
+    smoke_key, smoke_pm = "2020-09-23", 269.7
+    clean = load_patch(sid, clean_key); smoke = load_patch(sid, smoke_key)
+    fig, axes = plt.subplots(1, 5, figsize=(14, 3.4))
+    panels = [(ref, "temporal median\n(reference, no labels used)"),
+              (clean, f"clean day {clean_key}\nPM2.5 = {clean_pm}"),
+              (clean - ref, "clean − reference"),
+              (smoke, f"smoke day {smoke_key}\nPM2.5 = {smoke_pm}"),
+              (smoke - ref, "smoke − reference")]
+    for ax, (img, ttl) in zip(axes, panels):
+        if img.min() < 0:
+            m = np.abs(img).max()
+            ax.imshow(img.mean(-1), cmap="RdBu_r", vmin=-m, vmax=m)
+        else:
+            ax.imshow(img)
+        ax.axis("off"); ax.set_title(ttl, fontsize=9)
+    fig.suptitle("What the reference-image model sees: the surface cancels, the atmosphere remains", y=1.02)
+    save(fig, "fig28_reference_explained.png")
+
+
+def fig29():  # cleaning rules: what was removed
+    sk = pd.read_parquet("data/interim/scene_keep.parquet")
+    lab = pd.read_parquet("data/interim/labels_scenehour.parquet")
+    lab["key"] = lab["scene_date"].astype(str).str[:10]
+    sk = sk.merge(lab[["station_id", "key", "pm25"]].drop_duplicates(["station_id", "key"]),
+                  on=["station_id", "key"], how="left")
+    rules = [("cloud_low_label", "R2: cloudy scene with a low label"),
+             ("tile_edge_zeros", "R4: tile edge, zero-filled pixels"),
+             ("pm_below_2.5", "R1: label below 2.5 µg/m³")]
+    rng = np.random.default_rng(3)
+    fig, axes = plt.subplots(3, 3, figsize=(9, 9.3))
+    for row, (reason, ttl) in zip(axes, rules):
+        sub = sk[sk.reason == reason]
+        pick = sub.iloc[rng.choice(len(sub), 3, replace=False)]
+        for ax, r in zip(row, pick.itertuples()):
+            ax.imshow(load_patch(r.station_id, r.key)); ax.axis("off")
+            pm = f"{r.pm25:.1f}" if pd.notna(r.pm25) else "n/a"
+            stamp(ax, f"{r.station_id} {r.key}\nPM2.5 = {pm}")
+        row[0].set_title(ttl, fontsize=9.5, loc="left")
+    fig.suptitle("Scenes removed by the cleaning rules (12,887 of 67,234)", y=1.0)
+    save(fig, "fig29_cleaning_examples.png")
+
+
+def fig30():  # pipeline diagram
+    fig, ax = plt.subplots(figsize=(11, 4.2)); ax.axis("off"); ax.set_xlim(0, 12); ax.set_ylim(0, 5)
+
+    def box(x, y, w, h, text, fc, fs=8.5):
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.08", fc=fc, ec="#444", lw=0.8))
+        ax.text(x + w/2, y + h/2, text, ha="center", va="center", fontsize=fs)
+
+    def arrow(x1, y1, x2, y2):
+        ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=12, color="#444", lw=1))
+    box(0.2, 3.4, 2.1, 1.2, "EPA AQS hourly PM2.5\n199 stations, 5 states\n2020–2025", "#d9efe6")
+    box(0.2, 1.4, 2.1, 1.2, "Sentinel-2 L1C\nevery pass, 10 m\nvia Earth Engine", "#dbe9f5")
+    box(3.0, 2.4, 2.3, 1.2, "overpass-hour match\nlabel = mean within\n±1 h of the pass (UTC)", "#f6e6c8")
+    box(6.0, 3.4, 2.1, 1.2, "cleaning rules R1–R4\n67,234 → 54,347 scenes", "#eee")
+    box(6.0, 1.4, 2.1, 1.2, "context features\nERA5-Land · SRTM\nsun angle · season", "#d9efe6")
+    box(8.8, 2.4, 1.6, 1.2, "FiLM ResNet-18\n×5 members", LTBLUE)
+    box(10.9, 2.55, 1.0, 0.9, "PM2.5\nestimate", BLUE)
+    arrow(2.3, 4.0, 3.0, 3.3); arrow(2.3, 2.0, 3.0, 2.7); arrow(5.3, 3.0, 6.0, 3.8)
+    arrow(5.3, 3.0, 6.0, 2.2); arrow(8.1, 4.0, 8.8, 3.3); arrow(8.1, 2.0, 8.8, 2.7); arrow(10.4, 3.0, 10.9, 3.0)
+    ax.text(6, 0.5, "evaluation: 20% of stations per state held out, never seen in training; two independent draws",
+            ha="center", fontsize=8.5, color="#555")
+    save(fig, "fig30_pipeline.png")
+
+
+def fig31():  # overpass-hour matching on one smoke day
+    import zipfile
+    sid = "06-027-0002"
+    cache = Path("data/interim/hourly_06-027-0002_2020.parquet")
+    if cache.exists():
+        h = pd.read_parquet(cache)
+    else:
+        st, co, si = sid.split("-")
+        parts = []
+        with zipfile.ZipFile("data/raw/epa/hourly_88101_2020.zip") as z:
+            with z.open(z.namelist()[0]) as f:
+                for chunk in pd.read_csv(f, usecols=["State Code", "County Code", "Site Num",
+                                                     "Date GMT", "Time GMT", "Sample Measurement"],
+                                         dtype=str, chunksize=500_000):
+                    m = (chunk["State Code"] == st) & (chunk["County Code"] == co) & (chunk["Site Num"] == si)
+                    parts.append(chunk[m])
+        h = pd.concat(parts)
+        h["ts"] = pd.to_datetime(h["Date GMT"] + " " + h["Time GMT"])
+        h["pm25"] = pd.to_numeric(h["Sample Measurement"], errors="coerce").clip(lower=0)
+        h = h.groupby("ts", as_index=False).pm25.mean()
+        h.to_parquet(cache, index=False)
+    pt = pd.read_parquet("data/interim/s2_pass_times.parquet")
+    day = "2020-09-23"
+    pas = pt[(pt.station_id == sid) & (pt.ts.dt.strftime("%Y-%m-%d") == day)].ts.iloc[0]
+    w = h[(h.ts >= pd.Timestamp(day) - pd.Timedelta("1D")) & (h.ts < pd.Timestamp(day) + pd.Timedelta("2D"))]
+    fig, ax = plt.subplots(figsize=(9, 3.8))
+    ax.plot(w.ts, w.pm25, color="k", lw=1.2, marker=".", ms=4, label="hourly PM2.5 (EPA, GMT)")
+    ax.axvspan(pas - pd.Timedelta("1h"), pas + pd.Timedelta("1h"), color=BLUE, alpha=0.25, label="±1 h of satellite pass")
+    ax.axvline(pas, color=BLUE, lw=1.5)
+    dmask = w.ts.dt.strftime("%Y-%m-%d") == day
+    ax.hlines(w[dmask].pm25.mean(), pd.Timestamp(day), pd.Timestamp(day) + pd.Timedelta("1D"),
+              color=RED, ls="--", lw=1.2, label="that day's mean")
+    ax.set_ylabel("PM2.5 (µg/m³)"); ax.legend(fontsize=8)
+    ax.set_title(f"Why the label is matched to the pass hour: station {sid}, {day}")
+    save(fig, "fig31_overpass_matching.png")
+
+
+def fig32():  # prediction contact sheet
+    b = pd.concat([blend(SPLIT_A), blend(SPLIT_B)])
+    b["key"] = b.week_start.dt.strftime("%Y-%m-%d")
+    b = b[[ (PATCH_ROOT / r.station_id / f"{r.key}.npy").exists() for r in b.itertuples()]]
+    e = b.y_pred - b.y_true
+    cats = [("clean, predicted well", b[(b.y_true < 12) & (e.abs() < 1.5)]),
+            ("smoke, predicted well", b[(b.y_true > 55) & ((e / b.y_true).abs() < 0.3)]),
+            ("smoke, underpredicted", b[(b.y_true > 55) & (b.y_pred < 0.5 * b.y_true)]),
+            ("false alarm (>35 predicted)", b[(b.y_true < 20) & (b.y_pred > 35)])]
+    rng = np.random.default_rng(1)
+    fig, axes = plt.subplots(4, 4, figsize=(10.5, 11))
+    for row, (ttl, sub) in zip(axes, cats):
+        pick = sub.iloc[rng.choice(len(sub), min(4, len(sub)), replace=False)] if len(sub) else sub
+        for ax in row: ax.axis("off")
+        for ax, r in zip(row, pick.itertuples()):
+            ax.imshow(load_patch(r.station_id, r.key))
+            stamp(ax, f"true {r.y_true:.0f} · pred {r.y_pred:.0f}\n{r.station_id} {r.key}")
+        row[0].set_title(ttl, fontsize=9.5, loc="left")
+    fig.suptitle("Champion predictions at held-out stations: what it gets right and wrong", y=1.0)
+    save(fig, "fig32_prediction_contact_sheet.png")
+
+
+def _r2(yt, yp):
+    yt, yp = np.asarray(yt), np.asarray(yp)
+    return 1 - ((yt - yp) ** 2).sum() / ((yt - yt.mean()) ** 2).sum()
+
+
+def fig33():  # per-state scatter
+    b = pd.concat([blend(SPLIT_A), blend(SPLIT_B)])
+    b["state"] = b.station_id.str[:2].map(STATE_OF)
+    fig, axes = plt.subplots(1, 5, figsize=(14, 3.3), sharex=True, sharey=True)
+    for ax, s, col in zip(axes, ORDER, STATE_COLORS):
+        d = b[b.state == s]
+        ax.scatter(d.y_true, d.y_pred, s=4, alpha=0.2, color=col, edgecolors="none")
+        ax.plot([2, 300], [2, 300], "k--", lw=0.7); ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_xlim(2, 300); ax.set_ylim(2, 300)
+        ax.set_title(f"{s} — R²={_r2(d.y_true, d.y_pred):.2f}, n={len(d):,}", fontsize=9.5)
+        ax.set_xlabel("true (µg/m³)")
+    axes[0].set_ylabel("predicted (µg/m³)")
+    fig.suptitle("Held-out-station predictions by state (both splits pooled)", y=1.02)
+    save(fig, "fig33_per_state_scatter.png")
+
+
+def fig34():  # predicted vs true map for the worst smoke week
+    b = blend(SPLIT_A)
+    st = pd.read_parquet("data/interim/stations.parquet").set_index("station_id")
+    b["wk"] = b.week_start.dt.to_period("W").dt.start_time
+    wk = b[b.y_true > 35].groupby("wk").size().sort_values(ascending=False).index[0]
+    d = b[(b.week_start >= wk) & (b.week_start < wk + pd.Timedelta("7D"))]
+    g = d.groupby("station_id")[["y_true", "y_pred"]].mean()
+    g["lat"] = st.loc[g.index].lat; g["lon"] = st.loc[g.index].lon
+    vmax = max(g.y_true.max(), g.y_pred.max())
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    for ax, col, ttl in [(axes[0], "y_true", "measured (EPA)"), (axes[1], "y_pred", "predicted (champion)")]:
+        sc = ax.scatter(g.lon, g.lat, c=g[col], s=70, cmap="YlOrRd", vmin=2, vmax=vmax, edgecolors="k", linewidths=0.4)
+        ax.set_aspect(1.25); ax.set_title(ttl); ax.set_xlabel("lon"); ax.set_ylabel("lat")
+    fig.colorbar(sc, ax=axes, label="PM2.5 (µg/m³), week mean", shrink=0.85)
+    fig.suptitle(f"Held-out stations, week of {wk.date()}: measured vs predicted", y=1.0)
+    fig.savefig(FIG / "fig34_smoke_week_map.png", bbox_inches="tight"); plt.close(fig)
+    print("fig34_smoke_week_map.png")
+
+
+def _decomp(df):
+    yt, yp = df.y_true.values, df.y_pred.values
+    g = df.groupby("station_id")[["y_true", "y_pred"]].mean()
+    bt = _r2(g.y_true, g.y_pred)
+    a = df.y_true - df.groupby("station_id").y_true.transform("mean")
+    p = df.y_pred - df.groupby("station_id").y_pred.transform("mean")
+    wi = 1 - ((a - p) ** 2).sum() / (a ** 2).sum()
+    c = df[df.y_true <= 35]
+    a2 = c.y_true - c.groupby("station_id").y_true.transform("mean")
+    p2 = c.y_pred - c.groupby("station_id").y_pred.transform("mean")
+    wi_clean = 1 - ((a2 - p2) ** 2).sum() / (a2 ** 2).sum()
+    return _r2(yt, yp), bt, wi, wi_clean
+
+
+def fig35():  # skill decomposition: image-only vs champion, both splits
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), sharey=True)
+    labels = ["overall R²", "between\nstations", "within\nstation", "within,\n≤35 only"]
+    for ax, sp, img, champ in [(axes[0], "Split A", "tta_imgonly_A", SPLIT_A),
+                               (axes[1], "Split B", "tta_imgonly_B", SPLIT_B)]:
+        vi = _decomp(preds(img)); vc = _decomp(blend(champ))
+        x = np.arange(4); w = 0.38
+        ax.bar(x - w/2, vi, w, color=GRAY, label="image-only")
+        ax.bar(x + w/2, vc, w, color=BLUE, label="context blend (champion)")
+        for i, (a_, b_) in enumerate(zip(vi, vc)):
+            ax.text(i - w/2, a_ + (0.01 if a_ >= 0 else -0.04), f"{a_:+.2f}", ha="center", fontsize=7.5)
+            ax.text(i + w/2, b_ + 0.01, f"{b_:+.2f}", ha="center", fontsize=7.5)
+        ax.axhline(0, color="k", lw=0.8); ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8.5)
+        ax.set_title(sp); ax.legend(fontsize=8, loc="upper right")
+    fig.suptitle("Which kinds of variation are recovered (identical scenes and splits, §3y)", y=1.02)
+    save(fig, "fig35_skill_decomposition.png")
+
+
+def fig36():  # exceedance confusion matrices
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.6))
+    for ax, sp, runs in [(axes[0], "Split A", SPLIT_A), (axes[1], "Split B", SPLIT_B)]:
+        b = blend(runs); t = b.y_true > 35; p = b.y_pred > 35
+        m = np.array([[(~t & ~p).sum(), (~t & p).sum()], [(t & ~p).sum(), (t & p).sum()]])
+        ax.imshow(np.log1p(m), cmap="Blues")
+        for i in range(2):
+            for j in range(2):
+                ax.text(j, i, f"{m[i, j]:,}", ha="center", va="center", fontsize=11,
+                        color="w" if m[i, j] > m.max() / 3 else "k")
+        ax.set_xticks([0, 1]); ax.set_xticklabels(["predicted ≤35", "predicted >35"])
+        ax.set_yticks([0, 1]); ax.set_yticklabels(["true ≤35", "true >35"])
+        ax.set_title(sp)
+    fig.suptitle("Exceedance detection at 35 µg/m³ (champion, held-out stations)", y=1.02)
+    save(fig, "fig36_exceedance_confusion.png")
+
+
+def fig37():  # feature ablation, single models pre-TTA (§3q-3s, §3x, §3y)
+    rows = [("image-only", 0.237, 0.223), ("FiLM full (11)", 0.377, 0.422),
+            ("FiLM physics-only (9)", 0.304, 0.382), ("FiLM place+season (4)", 0.380, 0.299),
+            ("FiLM full, no sun angle (10)", 0.392, 0.327)]
+    fig, ax = plt.subplots(figsize=(8.5, 3.8))
+    x = np.arange(len(rows)); w = 0.38
+    ax.bar(x - w/2, [r[1] for r in rows], w, color=LTBLUE, label="split A")
+    ax.bar(x + w/2, [r[2] for r in rows], w, color=BLUE, label="split B")
+    for i, r in enumerate(rows):
+        ax.text(i - w/2, r[1] + 0.005, f"{r[1]:.2f}", ha="center", fontsize=8)
+        ax.text(i + w/2, r[2] + 0.005, f"{r[2]:.2f}", ha="center", fontsize=8)
+    ax.set_xticks(x); ax.set_xticklabels([r[0] for r in rows], fontsize=8.5)
+    ax.set_ylabel("single-model R² (pre-TTA)"); ax.set_ylim(0, 0.5); ax.legend(fontsize=8)
+    ax.set_title("Context variants, single models, both splits")
+    save(fig, "fig37_feature_ablation.png")
+
+
+def fig38():  # initialization lottery
+    pairs = [("full A: init 0 → init 2", 0.377, 0.419), ("full B: init 0 → init 2", 0.422, 0.354),
+             ("full A: with → without sun", 0.377, 0.392), ("full B: with → without sun", 0.422, 0.327),
+             ("physics A: with → without sun", 0.304, 0.347), ("physics B: with → without sun", 0.382, 0.200),
+             ("reference A: with → without sun", 0.406, 0.421), ("reference B: with → without sun", 0.399, 0.370)]
+    fig, ax = plt.subplots(figsize=(8, 4.2))
+    for i, (name, a, b) in enumerate(pairs):
+        ax.plot([a, b], [i, i], color=GRAY, lw=2)
+        ax.scatter([a], [i], color=LTBLUE, s=40, zorder=3); ax.scatter([b], [i], color=BLUE, s=40, zorder=3)
+        ax.text(max(a, b) + 0.008, i, f"{b - a:+.3f}", va="center", fontsize=8)
+    ax.set_yticks(range(len(pairs))); ax.set_yticklabels([p[0] for p in pairs], fontsize=8.5); ax.invert_yaxis()
+    ax.set_xlabel("single-model R²"); ax.set_xlim(0.15, 0.5)
+    ax.set_title("Same recipe, one change: single models move by up to ±0.18 — blends are the stable object")
+    save(fig, "fig38_init_lottery.png")
+
+
+def fig39():  # 2023 time series at three held-out stations in different states
+    b = pd.concat([blend(SPLIT_A), blend(SPLIT_B)])
+    b["state"] = b.station_id.str[:2].map(STATE_OF)
+    y = b[b.week_start.dt.year == 2023]
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    for ax, s in zip(axes, ["TX", "WA", "NY"]):
+        cnt = y[y.state == s].groupby("station_id").size()
+        sid = cnt.sort_values(ascending=False).index[0]
+        d = y[y.station_id == sid].sort_values("week_start")
+        ax.plot(d.week_start, d.y_true, color="k", lw=1.1, marker="o", ms=2.5, label="EPA truth")
+        ax.plot(d.week_start, d.y_pred, color=BLUE, lw=1.1, marker="o", ms=2.5, label="prediction")
+        ax.axhline(35, color=RED, ls=":", lw=0.8)
+        ax.set_ylabel("PM2.5"); ax.set_title(f"{s} · station {sid} · 2023 ({len(d)} scenes)", fontsize=9.5, loc="left")
+        ax.legend(fontsize=8, loc="upper right")
+    save(fig, "fig39_timeseries_three_states.png")
+
+
+def fig40():  # honest vs lenient evaluation (§2 ladder rows 7, 9, 10, 11)
+    rows = [("fine-tuned CNN\n(CA, scene-date)", 0.52, 0.36), ("fine-tuned CNN\n(CA, hour-sync)", 0.56, 0.36),
+            ("tuned recipe\n(CA)", 0.53, 0.39), ("13-band variant\n(CA)", 0.57, 0.32)]
+    fig, ax = plt.subplots(figsize=(8, 3.8))
+    x = np.arange(len(rows)); w = 0.38
+    ax.bar(x - w/2, [r[1] for r in rows], w, color=GRAY, label="random split (stations seen in training)")
+    ax.bar(x + w/2, [r[2] for r in rows], w, color=BLUE, label="station holdout (never-seen stations)")
+    for i, r in enumerate(rows):
+        ax.text(i - w/2, r[1] + 0.005, f"{r[1]:.2f}", ha="center", fontsize=8)
+        ax.text(i + w/2, r[2] + 0.005, f"{r[2]:.2f}", ha="center", fontsize=8)
+    ax.set_xticks(x); ax.set_xticklabels([r[0] for r in rows], fontsize=8.5); ax.set_ylabel("R²")
+    ax.set_ylim(0, 0.65); ax.legend(fontsize=8, loc="upper left")
+    ax.set_title("The same models under the lenient and the honest exam")
+    save(fig, "fig40_honest_vs_lenient.png")
+
+
+def fig41():  # clean-range floor
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4.2), sharey=True)
+    for ax, sp, runs in [(axes[0], "Split A", SPLIT_A), (axes[1], "Split B", SPLIT_B)]:
+        b = blend(runs); c = b[b.y_true <= 35]
+        _, _, _, wic = _decomp(b)
+        ax.scatter(c.y_true, c.y_pred, s=4, alpha=0.15, color=BLUE, edgecolors="none")
+        ax.plot([2, 35], [2, 35], "k--", lw=0.8); ax.set_xlim(2, 35); ax.set_ylim(0, 40)
+        ax.set_title(f"{sp}: scenes ≤35 µg/m³ — within-station R² = {wic:+.2f}", fontsize=9.5)
+        ax.set_xlabel("true (µg/m³)")
+    axes[0].set_ylabel("predicted (µg/m³)")
+    fig.suptitle("The clean-range floor: ordinary day-to-day variation is not resolved", y=1.02)
+    save(fig, "fig41_clean_range_floor.png")
+
+
+
 ALL = {f"fig{i}": fn for i, fn in enumerate(
     [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8, fig9, fig10, fig11, fig12, fig13,
-     fig14, fig15, fig16, fig17, fig18, fig19, fig20, fig21, fig22, fig23, fig24], start=1)}
+     fig14, fig15, fig16, fig17, fig18, fig19, fig20, fig21, fig22, fig23, fig24,
+     fig25, fig26, fig27, fig28, fig29, fig30, fig31, fig32, fig33, fig34, fig35,
+     fig36, fig37, fig38, fig39, fig40, fig41], start=1)}
 
 if __name__ == "__main__":
     targets = sys.argv[1:] or list(ALL)
