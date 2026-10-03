@@ -822,10 +822,9 @@ def fig36():  # exceedance confusion matrices
     save(fig, "fig36_exceedance_confusion.png")
 
 
-def fig37():  # feature ablation, single models pre-TTA (§3q-3s, §3x, §3y)
+def fig37():  # feature ablation, single models pre-TTA (§3q-3s, §3y)
     rows = [("image-only", 0.237, 0.223), ("FiLM full (11)", 0.377, 0.422),
-            ("FiLM physics-only (9)", 0.304, 0.382), ("FiLM place+season (4)", 0.380, 0.299),
-            ("FiLM full, no sun angle (10)", 0.392, 0.327)]
+            ("FiLM physics-only (9)", 0.304, 0.382), ("FiLM place+season (4)", 0.380, 0.299)]
     fig, ax = plt.subplots(figsize=(8.5, 3.8))
     x = np.arange(len(rows)); w = 0.38
     ax.bar(x - w/2, [r[1] for r in rows], w, color=LTBLUE, label="split A")
@@ -839,20 +838,22 @@ def fig37():  # feature ablation, single models pre-TTA (§3q-3s, §3x, §3y)
     save(fig, "fig37_feature_ablation.png")
 
 
-def fig38():  # initialization lottery
-    pairs = [("full A: init 0 → init 2", 0.377, 0.419), ("full B: init 0 → init 2", 0.422, 0.354),
-             ("full A: with → without sun", 0.377, 0.392), ("full B: with → without sun", 0.422, 0.327),
-             ("physics A: with → without sun", 0.304, 0.347), ("physics B: with → without sun", 0.382, 0.200),
-             ("reference A: with → without sun", 0.406, 0.421), ("reference B: with → without sun", 0.399, 0.370)]
-    fig, ax = plt.subplots(figsize=(8, 4.2))
-    for i, (name, a, b) in enumerate(pairs):
-        ax.plot([a, b], [i, i], color=GRAY, lw=2)
-        ax.scatter([a], [i], color=LTBLUE, s=40, zorder=3); ax.scatter([b], [i], color=BLUE, s=40, zorder=3)
-        ax.text(max(a, b) + 0.008, i, f"{b - a:+.3f}", va="center", fontsize=8)
-    ax.set_yticks(range(len(pairs))); ax.set_yticklabels([p[0] for p in pairs], fontsize=8.5); ax.invert_yaxis()
-    ax.set_xlabel("single-model R²"); ax.set_xlim(0.15, 0.5)
-    ax.set_title("Same recipe, one change: single models move by up to ±0.18 — blends are the stable object")
-    save(fig, "fig38_init_lottery.png")
+def fig38():  # single models vary by split and initialization; the blend does not (§3t, §3w)
+    rows = [("FiLM full", 0.377, 0.422), ("FiLM physics-only", 0.304, 0.382),
+            ("FiLM place+season", 0.380, 0.299), ("FiLM full, second initialization", 0.419, 0.354),
+            ("FiLM reference-image", 0.406, 0.399), ("five-member blend", 0.435, 0.435)]
+    fig, ax = plt.subplots(figsize=(8, 3.8))
+    for i, (name, a_, b_) in enumerate(rows):
+        last = i == len(rows) - 1
+        ax.plot([a_, b_], [i, i], color=GRAY, lw=2)
+        ax.scatter([a_], [i], color=LTBLUE, s=55 if last else 40, zorder=3, label="split A" if i == 0 else None)
+        ax.scatter([b_], [i], color=BLUE, s=55 if last else 40, zorder=3, label="split B" if i == 0 else None)
+        ax.text(max(a_, b_) + 0.008, i, f"spread {abs(b_ - a_):.3f}", va="center", fontsize=8,
+                fontweight="bold" if last else "normal")
+    ax.set_yticks(range(len(rows))); ax.set_yticklabels([r[0] for r in rows], fontsize=8.5); ax.invert_yaxis()
+    ax.set_xlabel("R² at held-out stations"); ax.set_xlim(0.27, 0.5); ax.legend(fontsize=8, loc="lower right")
+    ax.set_title("Single models move between splits and initializations; the blend does not")
+    save(fig, "fig38_member_stability.png")
 
 
 def fig39():  # 2023 time series at three held-out stations in different states
