@@ -1014,6 +1014,31 @@ Pre-TTA image-only: 0.237 (A), 0.223 (B). TTA gave image-only −0.002/+0.021 vs
    Report both and say why they differ.
 Weights: data/runs/imgonly_ctxset_{A,B}/, preds in tta_imgonly_{A,B}/.
 
+## 3z. Corrections found while writing the thesis (Oct 3 2026)
+
+- **ref-clean was not like-for-like.** `film_refclean_s0` trained on 52,216 rows (99 rows at
+  stations without a clean reference were dropped), which changed the stratified station
+  draw: its test set has 10,565 scenes, not the 9,733 of split A. Its 0.436 and its −37.5
+  bias above 55 µg/m³ (§3w) are therefore on a different exam and the claim that it "broke
+  the −50 floor" is not established. The model is left out of the thesis. The temporal
+  reference model (`film_reftemporal_*`) is on the correct splits and stays.
+- **ref-temporal "+0.03 replicated" was overstated.** Against the plain FiLM model of the
+  same split it is +0.029 on A (0.406 vs 0.377) and −0.023 on B (0.399 vs 0.422). Its value
+  is as an ensemble member.
+- **Station 06-027-0002 is in Bishop, Inyo County (Owens Valley), not the San Joaquin
+  Valley.** Figure titles corrected.
+- **Cleaning rule numbering** (scripts/09_clean_scenes.py): R1 cloud-vs-smoke, R2
+  single-hour label, R3 tile edge, R4 PM2.5 < 2.5. Figure labels corrected.
+- **AQNet** (Rowley & Karakuş 2023) predicts NO2, O3 and PM10, not PM2.5 (§3, literature
+  notes). It is cited in the thesis only for its backbone comparison.
+- Numbers recomputed for the thesis from saved predictions (final ensemble): RMSE 8.73/8.97,
+  bias −0.69/−0.62, within 5 µg/m³ 80.7%/79.6%, AUC 0.945/0.925, precision 0.64/0.59,
+  recall 0.41/0.50; within-station R² for scenes ≤35: 0.13/0.03 (image-only 0.05/−0.41).
+
+Thesis build: `scripts/13_build_thesis.py` generates the thesis from the untouched Purdue
+template; `scripts/14_check_thesis.py` checks it against the handbook rules. The thesis
+text itself is kept out of this public repository.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names

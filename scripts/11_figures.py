@@ -66,9 +66,9 @@ def fig1():  # story arc (§2 ladder + §3p/§3t)
               ("L1C single scenes\n+ label sync", 0.19),
               ("+ wildfire era,\nfine-tuned end-to-end\n(CA only)", 0.39),
               ("5 states,\nrare-event weighting\n(damped)", 0.31),
-              ("Image-only\nensemble ×3\n(certified §3p)", 0.362),
-              ("Triple-FiLM\ncontext blend\n(certified §3t)", 0.437),
-              ("5-member blend\n+TTA +references\n(certified §3w)", 0.435)]
+              ("Image-only\nensemble of three\nmodels", 0.362),
+              ("Three-model\ncontext blend", 0.437),
+              ("Five-model\ncontext blend\n(final)", 0.435)]
     fig, ax = plt.subplots(figsize=(9, 4.2))
     vals = [v for _, v in stages]
     ax.bar(range(len(stages)), vals, color=[GRAY]*4 + [LTBLUE, LTBLUE, BLUE], width=0.62)
@@ -77,7 +77,7 @@ def fig1():  # story arc (§2 ladder + §3p/§3t)
     ax.set_xticks(range(len(stages)))
     ax.set_xticklabels([s for s, _ in stages], fontsize=7.5)
     ax.set_ylabel("R² at never-seen stations")
-    ax.set_title("From zero signal to a certified instrument — the project arc")
+    ax.set_title("Held-out-station R² at each stage of the work")
     save(fig, "fig1_story_arc.png")
 
 
@@ -90,10 +90,10 @@ def fig2():
         ax.plot(lim, lim, "k--", lw=0.8)
         ax.axvline(35, color=RED, lw=0.7, ls=":"); ax.axhline(35, color=RED, lw=0.7, ls=":")
         ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(lim); ax.set_ylim(lim)
-        ax.set_title(f"{ttl} — R²={r2:.3f}, n={len(b):,}")
+        ax.set_title(f"{ttl}: R²={r2:.3f}, n={len(b):,}")
         ax.set_xlabel("EPA measured PM2.5 (µg/m³)")
     axes[0].set_ylabel("Predicted PM2.5 (µg/m³)")
-    fig.suptitle("Champion (5-member FiLM blend, §3w) at held-out stations", y=1.0)
+    fig.suptitle("Final model at held-out stations", y=1.0)
     save(fig, "fig2_champion_scatter.png")
 
 
@@ -139,7 +139,7 @@ def fig4():
             ax.text(x, mae + 1.2, f"{bias:+.0f}", ha="center", fontsize=7.5, color="#555")
     ax.set_xticks(range(len(BUCK))); ax.set_xticklabels([n for _, _, n in BUCK])
     ax.set_xlabel("True PM2.5 bucket (µg/m³)"); ax.set_ylabel("MAE (µg/m³)")
-    ax.set_title("Champion error by pollution level (numbers above bars = mean bias)")
+    ax.set_title("Final model error by pollution level (numbers above bars = mean bias)")
     ax.legend(fontsize=8)
     save(fig, "fig4_bucket_profile.png")
 
@@ -154,7 +154,7 @@ def fig5():  # §3u
         for i, x in enumerate(v):
             ax.text(i, x + 0.006, f"{x:.3f}", ha="center", fontweight="bold", fontsize=9)
         ax.set_title(ttl, fontsize=9.5); ax.set_ylabel("R²"); ax.set_ylim(0, 0.45)
-    fig.suptitle("RQ2 — label aggregation: sync matters to daily, then match the label to the product",
+    fig.suptitle("Label aggregation: accuracy per scene and for a weekly product",
                  y=1.02)
     save(fig, "fig5_rq2.png")
 
@@ -182,7 +182,7 @@ def fig6():
     for ax, row, ttl in [(axes[0], clean, f"Clean day — {clean.key}\nEPA: {clean.pm25:.1f} µg/m³"),
                          (axes[1], smoke, f"Wildfire smoke — {smoke.key}\nEPA: {smoke.pm25:.1f} µg/m³")]:
         ax.imshow(load(row)); ax.set_title(ttl, fontsize=10); ax.axis("off")
-    fig.suptitle(f"Same station ({sid}, San Joaquin Valley CA) — 2.24 km patch", y=0.98)
+    fig.suptitle(f"Station {sid}, Bishop, California: the same 2.24 km patch on two days", y=0.98)
     save(fig, "fig6_scene_pair.png")
 
 
@@ -214,7 +214,7 @@ def fig8():
     for x in (6, 12, 35, 55):
         ax.axvline(x, color=RED, lw=0.8, ls=":")
     ax.set_xlabel("PM2.5 at overpass ±1h (µg/m³, log scale)"); ax.set_ylabel("scenes (log)")
-    ax.set_title(f"Label distribution — {len(tbl):,} scenes; medians hide a 100× dynamic range")
+    ax.set_title(f"Distribution of PM2.5 labels ({len(tbl):,} scenes)")
     save(fig, "fig8_label_distribution.png")
 
 
@@ -244,7 +244,7 @@ def fig10():
     ax.set_xticks(range(1, 13))
     ax.set_xticklabels(["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"])
     ax.set_ylabel("mean PM2.5 (µg/m³)"); ax.set_xlabel("month")
-    ax.set_title("Seasonal cycle by state — the pattern doy_sin/doy_cos lets the model learn")
+    ax.set_title("Mean PM2.5 by month and state")
     ax.legend(fontsize=8, ncol=5)
     save(fig, "fig10_seasonal_cycle.png")
 
@@ -285,7 +285,7 @@ def fig12():
         ax.text(i, (run if 0 < i < len(steps) - 1 else v) + 900, f"{abs(v):,}",
                 ha="center", fontsize=8.5, fontweight="bold")
     ax.set_xticks(range(len(steps))); ax.set_xticklabels([s for s, _, _ in steps], fontsize=8)
-    ax.set_ylabel("scenes"); ax.set_title("Data cleaning waterfall (rules R1–R4, §1 of the experiment log)")
+    ax.set_ylabel("scenes"); ax.set_title("Scenes removed by each quality rule")
     save(fig, "fig12_cleaning_waterfall.png")
 
 
@@ -299,7 +299,7 @@ def fig13():  # §2 ladder rows 1-10
             ax.text(j, i, f"{mat[i, j]:.2f}", ha="center", va="center", fontweight="bold")
     ax.set_xticks([0, 1]); ax.set_xticklabels(["weekly label", "day-synced label"])
     ax.set_yticks([0, 1]); ax.set_yticklabels(["L2A\n(corrected)", "L1C\n(raw TOA)"])
-    ax.set_title("2×2 with frozen features + composites:\nall dead (spatial R²)", fontsize=9)
+    ax.set_title("Frozen features, weekly composites:\nheld-out-station R²", fontsize=9)
     ax = axes[1]
     levers = [("weekly median\ncomposites", 0.00), ("single scenes,\nscene-date label", 0.15),
               ("+ hour sync", 0.17), ("+ fine-tuned\nend-to-end", 0.39)]
@@ -308,8 +308,8 @@ def fig13():  # §2 ladder rows 1-10
     for i, x in enumerate(v):
         ax.text(i, x + 0.008, f"{x:.2f}", ha="center", fontweight="bold", fontsize=9)
     ax.set_xticks(range(4)); ax.set_xticklabels([n for n, _ in levers], fontsize=7.5)
-    ax.set_title("The two levers that unlocked signal\n(California-era runs)", fontsize=9)
-    ax.set_ylabel("spatial R²")
+    ax.set_title("Changes that produced transferable signal\n(California)", fontsize=9)
+    ax.set_ylabel("held-out-station R²")
     save(fig, "fig13_dead_matrix_levers.png")
 
 
@@ -339,7 +339,7 @@ def fig14():
     ax.text(7.7, 0.7, "context can only MODULATE how the image is read —\n"
             "it has no direct path to the output (vs. concat, which does\n"
             "and collapses at unseen stations)", fontsize=8, ha="center", color="#555")
-    ax.set_title("FiLM context fusion — the champion architecture (×3 context variants, blended)")
+    ax.set_title("FiLM context fusion architecture")
     save(fig, "fig14_architecture.png")
 
 
@@ -371,8 +371,7 @@ def fig16():
         ax.plot(e, va, color=col, lw=1.6, marker="o", ms=3, label=f"{name} (val)")
     ax.plot([], [], color="k", ls="--", lw=1, label="train (dashed)")
     ax.set_xlabel("epoch"); ax.set_ylabel("Huber loss on log1p(PM2.5)")
-    ax.set_title("Training curves — three FiLM members, split B "
-                 "(early stopping: smoothed val, patience 5, min 12)")
+    ax.set_title("Training and validation loss of three ensemble members (split B)")
     ax.legend(fontsize=8)
     save(fig, "fig16_training_curves.png")
 
@@ -392,7 +391,7 @@ def fig17():
         ax.plot(fpr, tpr, color=col, lw=1.6, label=f"{name} AUC={a:.3f}")
     ax.plot([0, 1], [0, 1], "k--", lw=0.7)
     ax.set_xlabel("false positive rate"); ax.set_ylabel("true positive rate")
-    ax.set_title("Exceedance detection (>35 µg/m³)\nat never-seen stations")
+    ax.set_title("Exceedance detection (>35 µg/m³)\nat held-out stations")
     ax.legend(fontsize=8.5)
     save(fig, "fig17_roc.png")
 
@@ -404,7 +403,7 @@ def fig18():
                    cmap="Blues", mincnt=1)
     ax.axhline(0, color="k", lw=0.8)
     ax.set_xlabel("true PM2.5 (µg/m³, log)"); ax.set_ylabel("residual (pred − true)")
-    ax.set_title("Residuals vs truth (both splits pooled) — the extreme-underprediction tail")
+    ax.set_title("Residuals against measured PM2.5 (both splits pooled)")
     fig.colorbar(hb, label="scenes")
     save(fig, "fig18_residuals.png")
 
@@ -417,7 +416,7 @@ def fig19():  # §3k numbers
     ax.bar(x - w/2, [-22.3, -11.7, -15.4], w, color=LTBLUE, label="35–55 bias")
     ax.bar(x + w/2, [-72.9, -49.5, -49.6], w, color=BLUE, label="55+ bias")
     ax.axhline(0, color="k", lw=0.8); ax.set_xticks(x); ax.set_xticklabels(arms)
-    ax.set_ylabel("mean bias (µg/m³)"); ax.set_title("Weighted sampling: smoke bias (§3k)", fontsize=9.5)
+    ax.set_ylabel("mean bias (µg/m³)"); ax.set_title("Weighted sampling: bias on smoke scenes", fontsize=9.5)
     ax.legend(fontsize=8)
     ax = axes[1]
     overall = [0.31, 0.28, 0.26]
@@ -437,10 +436,10 @@ def fig20():
         ax.scatter(g.y_true, g.y_pred, s=32, color=BLUE, alpha=0.8)
         lim = [4, 20]
         ax.plot(lim, lim, "k--", lw=0.8); ax.set_xlim(lim); ax.set_ylim(lim)
-        ax.set_title(f"{ttl} — between-station R²={bt:+.2f}")
+        ax.set_title(f"{ttl}: between-station R²={bt:+.2f}")
         ax.set_xlabel("station true mean (µg/m³)")
     axes[0].set_ylabel("station predicted mean")
-    fig.suptitle("Ranking never-seen places: predicted vs true station averages", y=1.0)
+    fig.suptitle("Predicted against measured station averages at held-out stations", y=1.0)
     save(fig, "fig20_between_station.png")
 
 
@@ -467,7 +466,7 @@ def fig22():
     ax.plot(d.week_start, d.y_pred, color=BLUE, lw=1.2, marker="o", ms=3, label="prediction")
     ax.axhline(35, color=RED, ls=":", lw=0.8)
     ax.set_ylabel("PM2.5 (µg/m³)")
-    ax.set_title(f"2020 fire season at held-out station {sid} — event timing captured, peaks damped")
+    ax.set_title(f"2020 fire season at held-out station {sid}")
     ax.legend(fontsize=9)
     save(fig, "fig22_fireseason_timeseries.png")
 
@@ -518,7 +517,7 @@ def fig24():  # §3w campaign summary
     ax.set_yticklabels([n for n, _, _ in items], fontsize=9)
     ax.invert_yaxis()
     ax.set_xlabel("single-model R² change vs plain FiLM (same split)")
-    ax.set_title("Improvement campaign verdicts (§3w) — what helped, what didn't")
+    ax.set_title("Effect of each technique on a single model")
     save(fig, "fig24_campaign_verdicts.png")
 
 
@@ -584,7 +583,7 @@ def fig26():  # one station through a fire season
         ax.imshow(load_patch(r.station_id, r.key)); ax.axis("off")
         ax.set_title(f"{r.key}", fontsize=9)
         stamp(ax, f"PM2.5 = {r.pm25:.1f}")
-    fig.suptitle(f"Station {sid} (San Joaquin Valley, CA) through the 2020 fire season", y=1.0)
+    fig.suptitle(f"Station {sid}, Bishop, California, through the 2020 fire season", y=1.0)
     save(fig, "fig26_fire_season_sequence.png")
 
 
@@ -634,9 +633,9 @@ def fig29():  # cleaning rules: what was removed
     lab["key"] = lab["scene_date"].astype(str).str[:10]
     sk = sk.merge(lab[["station_id", "key", "pm25"]].drop_duplicates(["station_id", "key"]),
                   on=["station_id", "key"], how="left")
-    rules = [("cloud_low_label", "R2: cloudy scene with a low label"),
-             ("tile_edge_zeros", "R4: tile edge, zero-filled pixels"),
-             ("pm_below_2.5", "R1: label below 2.5 µg/m³")]
+    rules = [("cloud_low_label", "Cloudy scene with a low label (cloud, not smoke)"),
+             ("tile_edge_zeros", "Tile edge with zero-filled pixels"),
+             ("pm_below_2.5", "Label below 2.5 µg/m³")]
     rng = np.random.default_rng(3)
     fig, axes = plt.subplots(3, 3, figsize=(9, 9.3))
     for row, (reason, ttl) in zip(axes, rules):
@@ -663,7 +662,7 @@ def fig30():  # pipeline diagram
     box(0.2, 3.4, 2.1, 1.2, "EPA AQS hourly PM2.5\n199 stations, 5 states\n2020–2025", "#d9efe6")
     box(0.2, 1.4, 2.1, 1.2, "Sentinel-2 L1C\nevery pass, 10 m\nvia Earth Engine", "#dbe9f5")
     box(3.0, 2.4, 2.3, 1.2, "overpass-hour match\nlabel = mean within\n±1 h of the pass (UTC)", "#f6e6c8")
-    box(6.0, 3.4, 2.1, 1.2, "cleaning rules R1–R4\n67,234 → 54,347 scenes", "#eee")
+    box(6.0, 3.4, 2.1, 1.2, "quality rules\n67,234 to 54,347 scenes", "#eee")
     box(6.0, 1.4, 2.1, 1.2, "context features\nERA5-Land · SRTM\nsun angle · season", "#d9efe6")
     box(8.8, 2.4, 1.6, 1.2, "FiLM ResNet-18\n×5 members", LTBLUE)
     box(10.9, 2.55, 1.0, 0.9, "PM2.5\nestimate", BLUE)
@@ -729,7 +728,7 @@ def fig32():  # prediction contact sheet
             ax.imshow(load_patch(r.station_id, r.key))
             stamp(ax, f"true {r.y_true:.0f} · pred {r.y_pred:.0f}\n{r.station_id} {r.key}")
         row[0].set_title(ttl, fontsize=9.5, loc="left")
-    fig.suptitle("Champion predictions at held-out stations: what it gets right and wrong", y=1.0)
+    fig.suptitle("Final model predictions at held-out stations", y=1.0)
     save(fig, "fig32_prediction_contact_sheet.png")
 
 
@@ -747,7 +746,7 @@ def fig33():  # per-state scatter
         ax.scatter(d.y_true, d.y_pred, s=4, alpha=0.2, color=col, edgecolors="none")
         ax.plot([2, 300], [2, 300], "k--", lw=0.7); ax.set_xscale("log"); ax.set_yscale("log")
         ax.set_xlim(2, 300); ax.set_ylim(2, 300)
-        ax.set_title(f"{s} — R²={_r2(d.y_true, d.y_pred):.2f}, n={len(d):,}", fontsize=9.5)
+        ax.set_title(f"{s}: R²={_r2(d.y_true, d.y_pred):.2f}, n={len(d):,}", fontsize=9.5)
         ax.set_xlabel("true (µg/m³)")
     axes[0].set_ylabel("predicted (µg/m³)")
     fig.suptitle("Held-out-station predictions by state (both splits pooled)", y=1.02)
@@ -764,7 +763,7 @@ def fig34():  # predicted vs true map for the worst smoke week
     g["lat"] = st.loc[g.index].lat; g["lon"] = st.loc[g.index].lon
     vmax = max(g.y_true.max(), g.y_pred.max())
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
-    for ax, col, ttl in [(axes[0], "y_true", "measured (EPA)"), (axes[1], "y_pred", "predicted (champion)")]:
+    for ax, col, ttl in [(axes[0], "y_true", "measured (EPA)"), (axes[1], "y_pred", "predicted (final model)")]:
         sc = ax.scatter(g.lon, g.lat, c=g[col], s=70, cmap="YlOrRd", vmin=2, vmax=vmax, edgecolors="k", linewidths=0.4)
         ax.set_aspect(1.25); ax.set_title(ttl); ax.set_xlabel("lon"); ax.set_ylabel("lat")
     fig.colorbar(sc, ax=axes, label="PM2.5 (µg/m³), week mean", shrink=0.85)
@@ -795,13 +794,13 @@ def fig35():  # skill decomposition: image-only vs champion, both splits
         vi = _decomp(preds(img)); vc = _decomp(blend(champ))
         x = np.arange(4); w = 0.38
         ax.bar(x - w/2, vi, w, color=GRAY, label="image-only")
-        ax.bar(x + w/2, vc, w, color=BLUE, label="context blend (champion)")
+        ax.bar(x + w/2, vc, w, color=BLUE, label="context blend (final model)")
         for i, (a_, b_) in enumerate(zip(vi, vc)):
             ax.text(i - w/2, a_ + (0.01 if a_ >= 0 else -0.04), f"{a_:+.2f}", ha="center", fontsize=7.5)
             ax.text(i + w/2, b_ + 0.01, f"{b_:+.2f}", ha="center", fontsize=7.5)
         ax.axhline(0, color="k", lw=0.8); ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8.5)
         ax.set_title(sp); ax.legend(fontsize=8, loc="upper right")
-    fig.suptitle("Which kinds of variation are recovered (identical scenes and splits, §3y)", y=1.02)
+    fig.suptitle("Which kinds of variation are recovered (identical scenes and splits)", y=1.02)
     save(fig, "fig35_skill_decomposition.png")
 
 
@@ -818,7 +817,7 @@ def fig36():  # exceedance confusion matrices
         ax.set_xticks([0, 1]); ax.set_xticklabels(["predicted ≤35", "predicted >35"])
         ax.set_yticks([0, 1]); ax.set_yticklabels(["true ≤35", "true >35"])
         ax.set_title(sp)
-    fig.suptitle("Exceedance detection at 35 µg/m³ (champion, held-out stations)", y=1.02)
+    fig.suptitle("Exceedance detection at 35 µg/m³ (final model, held-out stations)", y=1.02)
     save(fig, "fig36_exceedance_confusion.png")
 
 
@@ -839,9 +838,10 @@ def fig37():  # feature ablation, single models pre-TTA (§3q-3s, §3y)
 
 
 def fig38():  # single models vary by split and initialization; the blend does not (§3t, §3w)
-    rows = [("FiLM full", 0.377, 0.422), ("FiLM physics-only", 0.304, 0.382),
-            ("FiLM place+season", 0.380, 0.299), ("FiLM full, second initialization", 0.419, 0.354),
-            ("FiLM reference-image", 0.406, 0.399), ("five-member blend", 0.435, 0.435)]
+    # members as scored in the ensemble (test-time augmentation on the first three)
+    rows = [("Member 1: all context", 0.394, 0.432), ("Member 2: without lat/lon", 0.311, 0.392),
+            ("Member 3: lat/lon and day of year", 0.390, 0.319), ("Member 4: second initialization", 0.419, 0.354),
+            ("Member 5: reference image", 0.406, 0.399), ("Ensemble of five", 0.435, 0.435)]
     fig, ax = plt.subplots(figsize=(8, 3.8))
     for i, (name, a_, b_) in enumerate(rows):
         last = i == len(rows) - 1
@@ -852,7 +852,7 @@ def fig38():  # single models vary by split and initialization; the blend does n
                 fontweight="bold" if last else "normal")
     ax.set_yticks(range(len(rows))); ax.set_yticklabels([r[0] for r in rows], fontsize=8.5); ax.invert_yaxis()
     ax.set_xlabel("R² at held-out stations"); ax.set_xlim(0.27, 0.5); ax.legend(fontsize=8, loc="lower right")
-    ax.set_title("Single models move between splits and initializations; the blend does not")
+    ax.set_title("Ensemble members and the ensemble on the two station splits")
     save(fig, "fig38_member_stability.png")
 
 
@@ -885,7 +885,7 @@ def fig40():  # honest vs lenient evaluation (§2 ladder rows 7, 9, 10, 11)
         ax.text(i + w/2, r[2] + 0.005, f"{r[2]:.2f}", ha="center", fontsize=8)
     ax.set_xticks(x); ax.set_xticklabels([r[0] for r in rows], fontsize=8.5); ax.set_ylabel("R²")
     ax.set_ylim(0, 0.65); ax.legend(fontsize=8, loc="upper left")
-    ax.set_title("The same models under the lenient and the honest exam")
+    ax.set_title("The same models under random-split and station-holdout evaluation")
     save(fig, "fig40_honest_vs_lenient.png")
 
 
@@ -896,10 +896,10 @@ def fig41():  # clean-range floor
         _, _, _, wic = _decomp(b)
         ax.scatter(c.y_true, c.y_pred, s=4, alpha=0.15, color=BLUE, edgecolors="none")
         ax.plot([2, 35], [2, 35], "k--", lw=0.8); ax.set_xlim(2, 35); ax.set_ylim(0, 40)
-        ax.set_title(f"{sp}: scenes ≤35 µg/m³ — within-station R² = {wic:+.2f}", fontsize=9.5)
+        ax.set_title(f"{sp}: scenes ≤35 µg/m³, within-station R² = {wic:+.2f}", fontsize=9.5)
         ax.set_xlabel("true (µg/m³)")
     axes[0].set_ylabel("predicted (µg/m³)")
-    fig.suptitle("The clean-range floor: ordinary day-to-day variation is not resolved", y=1.02)
+    fig.suptitle("Predictions against measurements for scenes at or below 35 µg/m³", y=1.02)
     save(fig, "fig41_clean_range_floor.png")
 
 
