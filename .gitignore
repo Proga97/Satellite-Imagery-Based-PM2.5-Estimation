@@ -11,3 +11,6 @@ notebooks/*.png
 
 # thesis text stays out of the public repository (plagiarism check at deposit)
 docs/thesis/content/
+
+# the thesis document, proposal and template stay local
+docs/thesis/
