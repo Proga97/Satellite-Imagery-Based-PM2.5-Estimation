@@ -150,7 +150,7 @@ def fig4():
             ax.text(x, mae + 1.2, f"{bias:+.0f}", ha="center", fontsize=7.5, color="#555")
     ax.set_xticks(range(len(BUCK))); ax.set_xticklabels([n for _, _, n in BUCK])
     ax.set_xlabel("Measured PM2.5 (µg/m³)"); ax.set_ylabel("Mean absolute error (µg/m³)")
-    ax.set_title("Final model error by pollution level (number above each bar is the mean bias)")
+    ax.set_title("Final model error by pollution level (number above each bar: mean bias)", fontsize=10)
     ax.legend(fontsize=8)
     save(fig, "fig4_bucket_profile.png")
 
@@ -749,14 +749,15 @@ def _r2(yt, yp):
 def fig33():  # per-state scatter
     b = pd.concat([blend(SPLIT_A), blend(SPLIT_B)])
     b["state"] = b.station_id.str[:2].map(STATE_OF)
-    fig, axes = plt.subplots(1, 5, figsize=(14, 3.3), sharex=True, sharey=True)
+    fig, axes = plt.subplots(2, 3, figsize=(10, 6.6), sharex=True, sharey=True)
+    axes = axes.ravel(); axes[-1].axis("off")
     for ax, s, col in zip(axes, ORDER, STATE_COLORS):
         d = b[b.state == s]
         hb = _density_panel(ax, d, f"{s}: R²={_r2(d.y_true, d.y_pred):.2f}, n={len(d):,}", gridsize=30)
-        ax.title.set_fontsize(9.5)
-        ax.set_xlabel("true (µg/m³)")
-    axes[0].set_ylabel("predicted (µg/m³)")
-    fig.colorbar(hb, ax=axes, label="scenes per cell", shrink=0.9, pad=0.01)
+        ax.title.set_fontsize(10)
+    axes[0].set_ylabel("predicted (µg/m³)"); axes[3].set_ylabel("predicted (µg/m³)")
+    for ax in axes[:5]: ax.set_xlabel("measured (µg/m³)")
+    fig.colorbar(hb, ax=axes[:5].tolist(), label="scenes per cell", shrink=0.6, pad=0.02)
     fig.suptitle("Held-out-station predictions by state (both splits pooled)", y=1.02)
     fig.savefig(FIG / "fig33_per_state_scatter.png", bbox_inches="tight"); plt.close(fig)
 
