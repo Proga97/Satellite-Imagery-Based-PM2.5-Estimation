@@ -5,6 +5,7 @@ Structural checks on the docx, then a LibreOffice render for page-level checks.
 LibreOffice is a sanity check only; Word is the final arbiter.
 """
 import collections
+import os
 import re
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from docx.oxml.ns import qn
 from lxml import etree
 
 ROOT = Path(__file__).resolve().parents[1]
-THESIS = ROOT / "docs/thesis/thesis.docx"
+THESIS = (Path(os.environ["THESIS_OUT"]).resolve() if os.environ.get("THESIS_OUT") else ROOT / "docs/thesis/thesis.docx")
 TEMPLATE = ROOT / "docs/thesis/Purdue-Standard-Thesis-Template-August-2026.docx"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 OUTDIR = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data/reference/render"

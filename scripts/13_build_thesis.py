@@ -12,6 +12,7 @@ Text markup in content:  _{sub}  ^{sup}  *italic*  [@key] or [@a; @b] citations
                          {fig:key} {tab:key} {eq:key} cross-references
 Once the docx is edited by hand in Word, stop running this script.
 """
+import os
 import re
 import sys
 from copy import deepcopy
@@ -31,7 +32,7 @@ from refs import REFS          # noqa: E402
 import chapters as C           # noqa: E402
 
 TEMPLATE = ROOT / "docs/thesis/Purdue-Standard-Thesis-Template-August-2026.docx"
-OUT = ROOT / "docs/thesis/thesis.docx"
+OUT = (Path(os.environ["THESIS_OUT"]).resolve() if os.environ.get("THESIS_OUT") else ROOT / "docs/thesis/thesis.docx")
 FIGDIR = ROOT / "docs/figures"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
