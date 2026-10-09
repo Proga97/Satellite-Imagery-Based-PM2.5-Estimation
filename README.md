@@ -122,6 +122,7 @@ below 0.1, and the two together 0.39–0.43 for a single model.
 - `scripts/07_finetune.py` trains a model; `make train` trains one FiLM member.
 - `scripts/15_context_only.py` is the context-only baseline.
 - `scripts/11_figures.py` regenerates `docs/figures/`.
+- **The dataset is on the Hugging Face Hub:** [pr0gadiy/sentinel2-pm25-overpass-hour](https://huggingface.co/datasets/pr0gadiy/sentinel2-pm25-overpass-hour) (67,234 scenes with patches, 15.6 GB, streamable). `scripts/16_pack_huggingface.py` built it.
 - Trained weights of the five ensemble members: GitHub release `v1.0-champion`.
 - `docs/EXPERIMENT_LOG.md` is the complete record of every experiment and number.
 
