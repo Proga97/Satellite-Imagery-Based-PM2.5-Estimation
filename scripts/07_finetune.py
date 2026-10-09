@@ -67,6 +67,7 @@ CTX_COLS = ["lat", "lon", "elevation_m", "temp_c", "rh", "wind_speed", "precip_m
 # frozen full list: sample filtering always uses this so every fused experiment
 # trains on the same 52,315 scenes / same stratified split regardless of ctx subset
 ALL_CTX_COLS = list(CTX_COLS)
+TARGET = ["log1p"]   # or "raw"; set by --target
 # optional extras selectable via --ctx-cols (scene-mean band ratios; haze scatters blue)
 EXTRA_CTX_COLS = ["blue_red", "green_red"]
 
@@ -128,7 +129,8 @@ class PatchDataset(Dataset):
             y = 1.0 if float(r["pm25"]) > self.classify_threshold else 0.0
         else:
             # log1p target: PM spans 0-466 ug/m3; raw MSE is dominated by smoke days
-            y = float(np.log1p(max(float(r["pm25"]), 0.0)))
+            # (--target raw trains on the concentration itself, for the ablation in log §3ad)
+            y = float(max(float(r["pm25"]), 0.0)) if TARGET[0] == "raw" else float(np.log1p(max(float(r["pm25"]), 0.0)))
         return img, torch.from_numpy(self.ctx[i]), torch.tensor(y, dtype=torch.float32)
 
 
@@ -259,7 +261,8 @@ def predict(model, dl, device, tta: bool = False):
                 for k in range(4):
                     outs.append(model(torch.rot90(xf, k, dims=[2, 3]), cx).squeeze(-1))
             preds.append(torch.stack(outs).mean(0).cpu().numpy())
-    return np.expm1(np.concatenate(preds))
+    out = np.concatenate(preds)
+    return np.clip(out, 0, None) if TARGET[0] == "raw" else np.expm1(out)
 
 
 def main() -> int:
@@ -309,6 +312,8 @@ def main() -> int:
     parser.add_argument("--task", choices=["regress", "classify"], default="regress",
                         help="classify = binary clean-vs-elevated head (BCE, pos-weighted)")
     parser.add_argument("--classify-threshold", type=float, default=20.0)
+    parser.add_argument("--target", choices=["log1p", "raw"], default="log1p",
+                        help="regression target: ln(1+PM2.5) (default) or the raw concentration")
     parser.add_argument("--train-max-pm", type=float, default=None,
                         help="train/val only on scenes with pm25 <= this (clean specialist)")
     parser.add_argument("--train-min-pm", type=float, default=None,
@@ -316,6 +321,7 @@ def main() -> int:
                              "test set stays complete")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    TARGET[0] = args.target
     if args.ctx_cols == "none":
         # image-only model that still goes through the context join + row filter, so
         # it trains on the identical 52,315-scene set and split as the fused models

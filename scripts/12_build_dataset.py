@@ -94,7 +94,11 @@ def main() -> int:
     # the training script's table: same scenes, its column names
     mt = rows.rename(columns={"scene_date": "week_start"})[["station_id", "week_start", "pm25", "lat", "lon", "region"]]
     mt["year"] = mt["week_start"].dt.year
-    mt.to_parquet(out / f"model_table_{product}_scenehour_allscenes.parquet", index=False)
+    mt_path = out / f"model_table_{product}_scenehour_allscenes.parquet"
+    if mt_path.exists():   # keep the existing table: the row order fixes the validation carve-out of past runs
+        print(f"{mt_path.name} exists; left unchanged (delete it to regenerate)")
+    else:
+        mt.to_parquet(mt_path, index=False)
     print(f"wrote {out / 'dataset.parquet'} ({len(rows)} scenes, {rows.station_id.nunique()} stations) and .csv; "
           f"training table model_table_{product}_scenehour_allscenes.parquet")
     return 0
