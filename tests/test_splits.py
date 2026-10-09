@@ -56,8 +56,12 @@ def test_random_split_sizes():
 def test_canary_station_id_feature():
     """A model that memorizes station identity must look great under random
     split and useless under spatial CV. If this fails, splits are leaking."""
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.metrics import r2_score
+    import pytest
+    try:
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.metrics import r2_score
+    except ImportError as exc:   # scikit-learn is optional (legacy baselines only)
+        pytest.skip(f"scikit-learn unavailable: {exc}")
 
     t = make_table()
     X = t[["station_code_feature"]].to_numpy()

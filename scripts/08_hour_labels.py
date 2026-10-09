@@ -83,7 +83,7 @@ def main() -> int:
 
     hourly_parts = []
     for year in cfg.years:
-        zp = epa.download_hourly_year(year, cfg.path("raw_epa"))
+        zp = epa.download_hourly_year(year, cfg.path("raw_epa"), cfg.labels.get("parameter_code", epa.DEFAULT_PARAM))
         for reg in cfg.regions:
             part = epa.read_hourly_year(zp, reg["epa_state_code"])
             print(f"{year} {reg['name']}: {len(part):,} station-hours, "

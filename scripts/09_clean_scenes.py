@@ -11,6 +11,7 @@ Rules (agreed 2026-08-20):
 Writes data/interim/scene_keep.parquet (station_id, key, keep, reason).
 Assembly inner-joins keep==True.
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from thesis.config import load_config
 
 
 def main() -> int:
+    argparse.ArgumentParser(description=__doc__.split(chr(10))[0]).parse_args()
     cfg = load_config()
     lab = pd.read_parquet(cfg.path("labels_scenehour"))
     lab["key"] = lab["scene_date"].astype(str).str[:10]

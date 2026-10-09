@@ -1,6 +1,8 @@
-"""Labels from EPA AQS pre-generated daily files (parameter 88101, PM2.5 FRM/FEM).
+"""Labels from EPA AQS pre-generated files (default parameter 88101, PM2.5 FRM/FEM).
 
-Source: https://aqs.epa.gov/aqsweb/airdata/daily_88101_{year}.zip
+Source: https://aqs.epa.gov/aqsweb/airdata/daily_{param}_{year}.zip (and hourly_...).
+The parameter code comes from labels.parameter_code in configs/pipeline.yaml; the label
+column is always named pm25, whatever the pollutant. Only 88101 has been run end to end.
 These are validated, reference-grade daily summaries — no raw QC needed here.
 Remaining logic: filter to region/duration/completeness, dedupe monitors,
 aggregate daily -> ISO-weekly means.
@@ -14,7 +16,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-AIRDATA_URL = "https://aqs.epa.gov/aqsweb/airdata/daily_88101_{year}.zip"
+AIRDATA_URL = "https://aqs.epa.gov/aqsweb/airdata/daily_{param}_{year}.zip"
+DEFAULT_PARAM = 88101   # PM2.5 FRM/FEM mass; set labels.parameter_code in configs/pipeline.yaml
 
 USECOLS = [
     "State Code", "County Code", "Site Num", "POC", "Latitude", "Longitude",
@@ -23,11 +26,11 @@ USECOLS = [
 ]
 
 
-def download_year(year: int, dest_dir: Path) -> Path:
-    dest = dest_dir / f"daily_88101_{year}.zip"
+def download_year(year: int, dest_dir: Path, param: int = DEFAULT_PARAM) -> Path:
+    dest = dest_dir / f"daily_{param}_{year}.zip"
     if dest.exists() and dest.stat().st_size > 1_000_000:
         return dest
-    url = AIRDATA_URL.format(year=year)
+    url = AIRDATA_URL.format(year=year, param=param)
     resp = requests.get(url, timeout=300)
     resp.raise_for_status()
     tmp = dest.with_suffix(".tmp")
@@ -141,18 +144,18 @@ def build_overpass_labels(daily: pd.DataFrame, pass_dates: pd.DataFrame) -> pd.D
     return out
 
 
-HOURLY_URL = "https://aqs.epa.gov/aqsweb/airdata/hourly_88101_{year}.zip"
+HOURLY_URL = "https://aqs.epa.gov/aqsweb/airdata/hourly_{param}_{year}.zip"
 HOURLY_USECOLS = [
     "State Code", "County Code", "Site Num", "POC",
     "Date GMT", "Time GMT", "Sample Measurement",
 ]
 
 
-def download_hourly_year(year: int, dest_dir: Path) -> Path:
-    dest = dest_dir / f"hourly_88101_{year}.zip"
+def download_hourly_year(year: int, dest_dir: Path, param: int = DEFAULT_PARAM) -> Path:
+    dest = dest_dir / f"hourly_{param}_{year}.zip"
     if dest.exists():
         return dest
-    resp = requests.get(HOURLY_URL.format(year=year), timeout=600)
+    resp = requests.get(HOURLY_URL.format(year=year, param=param), timeout=600)
     resp.raise_for_status()
     tmp = dest.with_suffix(".tmp")
     tmp.write_bytes(resp.content)

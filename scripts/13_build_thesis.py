@@ -172,6 +172,8 @@ def caption(kind, label, marked):
     full = f"{kind} {label}. {plain(marked)}"
     p = para("CaptionFigure" if kind == "Figure" else "CaptionTable",
              jc="center" if len(full) <= 90 else None)   # one line: centered; longer: justified
+    if kind == "Table":                                   # a table caption stays on the page of its table
+        p.find(qn("w:pPr")).insert(1, OxmlElement("w:keepNext"))   # schema order: pStyle, keepNext, ..., jc
     p.append(mk_run(f"{kind} "))
     p.append(fld(" STYLEREF 1 \\s ", ch))
     p.append(mk_run("."))
@@ -189,6 +191,7 @@ def figure_para(doc, fname, alt, max_w=6.2, max_h=6.9):
     w, h = Image.open(path).size
     width = min(max_w, max_h * w / h)
     p_el = para("FigurePicture")
+    p_el.find(qn("w:pPr")).insert(1, OxmlElement("w:keepNext"))   # the picture stays on the page of its caption
     Paragraph(p_el, doc._body).add_run().add_picture(str(path), width=Inches(width))
     _pic_id[0] += 1
     for el in p_el.iter():
@@ -229,6 +232,8 @@ def table_el(header, rows, widths=None, size=20, align=None):
             va = OxmlElement("w:vAlign"); va.set(qn("w:val"), "center"); tcpr.append(va)
             tc.append(tcpr)
             p = OxmlElement("w:p"); ppr = OxmlElement("w:pPr")
+            if ri < len(rows):                      # all rows but the last: keep with next
+                ppr.append(OxmlElement("w:keepNext"))
             sp = OxmlElement("w:spacing")
             for k, v in dict(before="60", after="60", line="240", lineRule="auto").items():
                 sp.set(qn(f"w:{k}"), v)
@@ -463,6 +468,12 @@ def build():
 
     doc.core_properties.author = F["author"]
     doc.core_properties.title = F["title_case"]
+    # ask Word to recalculate every field (contents, lists, captions, cross-references) on open;
+    # the template's cached placeholders are otherwise shown until the user presses F9
+    settings = doc.settings.element
+    if settings.find(qn("w:updateFields")) is None:
+        uf = OxmlElement("w:updateFields"); uf.set(qn("w:val"), "true")
+        settings.insert(0, uf)
     doc.save(str(OUT))
     return doc
 

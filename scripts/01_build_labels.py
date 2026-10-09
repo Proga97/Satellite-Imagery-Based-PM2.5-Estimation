@@ -23,7 +23,7 @@ def main() -> int:
 
     daily_parts = []
     for year in cfg.years:
-        zp = epa.download_year(year, raw_dir)
+        zp = epa.download_year(year, raw_dir, cfg.labels.get("parameter_code", epa.DEFAULT_PARAM))
         for reg in cfg.regions:
             part = epa.read_year(zp, reg["epa_state_code"])
             part["region"] = reg["name"]

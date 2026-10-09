@@ -11,6 +11,7 @@ All inputs are available for ANY point on Earth (no ground infrastructure), so t
 
 Output: data/interim/context_features.parquet keyed (station_id, key=scene date ISO).
 """
+import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -48,6 +49,7 @@ def solar_elevation_deg(lat, lon, ts_utc):
 
 
 def main() -> int:
+    argparse.ArgumentParser(description=__doc__.split(chr(10))[0]).parse_args()
     cfg = load_config()
     lab = pd.read_parquet(cfg.path("labels_scenehour"))
     lab["key"] = lab["scene_date"].astype(str).str[:10]

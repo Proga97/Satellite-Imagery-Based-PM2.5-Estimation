@@ -15,7 +15,9 @@ These replace the two questions in the approved proposal.
 stations never seen during training?
 
 **RQ2.** Does adding spatial, temporal and meteorological context improve estimation at
-unmonitored locations, and does the fusion method matter?
+unmonitored locations?  (Oct 9 2026: the "does the fusion method matter" clause was dropped;
+concat vs FiLM rests on one run on split A and is now reported only as an 'other technique'.
+The context-only baseline §3ac answers RQ2 instead: context <0.1, image 0.24, both 0.39–0.43.)
 
 Scope of the RQ2 terms, as built (scripts/10_context_features.py):
 - spatial: latitude, longitude, SRTM elevation
@@ -1038,6 +1040,67 @@ Weights: data/runs/imgonly_ctxset_{A,B}/, preds in tta_imgonly_{A,B}/.
 Thesis build: `scripts/13_build_thesis.py` generates the thesis from the untouched Purdue
 template; `scripts/14_check_thesis.py` checks it against the handbook rules. The thesis
 text itself is kept out of this public repository.
+
+## 3aa. Between-station R² re-read as correlation + level error (Oct 8 2026)
+
+The between-station R² used throughout §3q–§3y is dominated by bias, because the test-station
+means differ by only ~2 µg/m³ (sd 1.97 on split A, 2.45 on B). Re-scoring the station means with
+correlation and RMSE (all numbers from the saved preds):
+
+| model (split A) | overall R² | between R² | corr of station means | RMSE of station means | bias of means |
+|---|---|---|---|---|---|
+| image-only (TTA) | 0.235 | −0.20 | 0.66 | 2.13 | −1.42 |
+| concat (fused_concat) | 0.304 | −0.37 | 0.72 | 2.28 | +1.18 |
+| FiLM single (fused_film) | 0.377 | +0.15 | 0.74 | 1.80 | −0.92 |
+| FiLM no-latlon | 0.304 | +0.48 | 0.77 | 1.40 | −0.65 |
+| champion blend | 0.435 | +0.50 | 0.80 | 1.37 | −0.69 |
+| champion blend (split B) | 0.435 | +0.36 | 0.68 | 1.93 | −0.67 |
+
+Consequences: (1) "concat harms the *ranking* of unseen places" was an over-reading — concat and
+FiLM order the stations equally well (0.72 vs 0.74); concat gets the *level* wrong (RMSE 2.28,
+biased +1.18) and FiLM gets it closer (1.80). The RQ2 conclusion (fusion method matters) stands;
+the wording is now "level", not "ranking". (2) The image-only model also orders places roughly
+(0.66) but misplaces their level by as much as the between-station spread. (3) Ordinary-day
+skill: within-station correlation on scenes ≤35 is 0.49/0.47 for the blend but the RMSE (4.8/5.1)
+is ~equal to the day-to-day sd (5.2), consistent with within-station R² 0.13/0.03.
+Thesis Tables 4.4, 4.6, 4.7, 4.8 now report correlation + RMSE in µg/m³ instead of between/within
+R²; abstract, Ch4, Ch5, Ch6 wording changed from ranking to level.
+
+## 3ab. Label noise from collocated monitors (Oct 8 2026)
+
+Hourly 88101 files 2023–2024, five states: 51 sites run ≥2 POCs; 460,107 site-hours with both
+reporting. Single-instrument noise = sd(POC_a − POC_b)/√2.
+
+| level (mean of pair) | pairs | sd one instrument | median |diff| | share |diff|>2 | >5 |
+|---|---|---|---|---|---|
+| <6 | 208,344 | 1.29 | 0.9 | 13% | 2% |
+| 6–12 | 165,788 | 1.56 | 1.4 | 15% | 4% |
+| 12–35 | 80,181 | 2.19 | 1.9 | 20% | 7% |
+| >35 | 5,794 | 3.74 | 1.9 | 12% | 5% |
+
+Also: 3.0% of all hourly readings in the five states are negative, 16.1% are below 2.5 µg/m³
+(justifies rule R4). Shared biases cancel in the pair difference, so these are lower bounds.
+Implication: error floor ≈ 1.3–2 µg/m³ in the ordinary range (champion median AE 2.3/2.4);
+noise ≈ 1/10 of the ordinary-day variance (sd 5.2), so it does not explain the within-station
+limit. Added to thesis as Ch3 "Uncertainty of the labels" (Table 3.5) and a Ch5 limitation.
+
+## 3ac. Context-only baseline (Oct 9 2026) — `scripts/15_context_only.py`
+
+Eleven context features, NO image, same 52,315 scenes and holdout splits (seed 0 = A, seed 1 = B),
+same station-aware val carve-out, log1p target, Huber. Two learners (LightGBM unusable: scipy
+import is broken on Darwin 27): MLP 11→128→128→1 and 50-NN in standardized feature space.
+Preds in `data/runs/ctxonly_{mlp,knn}_{A,B}/`.
+
+| model | R² A | R² B | r A | r B | station-avg corr A/B | station-avg RMSE A/B |
+|---|---|---|---|---|---|---|
+| context-only MLP | 0.080 | 0.023 | 0.29 | 0.24 | 0.73 / 0.27 | 1.61 / 3.19 |
+| context-only kNN | 0.075 | 0.055 | 0.30 | 0.27 | 0.68 / 0.46 | 1.82 / 2.57 |
+| image-only (TTA) | 0.235 | 0.244 | 0.51 | 0.52 | 0.66 / 0.50 | 2.13 / 2.57 |
+| FiLM single (TTA) | 0.394 | 0.432 | 0.63 | 0.66 | 0.75 / 0.64 | 1.64 / 2.04 |
+
+Context alone explains <0.1 of the variance; image alone 0.24; both 0.39–0.43 on both splits.
+The context is not a shortcut around the image. On split B the context-only station ordering
+is poor (0.27), so coordinates alone cannot be what the fused model relies on.
 
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive

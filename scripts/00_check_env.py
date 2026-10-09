@@ -9,8 +9,8 @@ def main() -> int:
     ok = True
 
     print("== imports ==")
-    for mod in ["numpy", "pandas", "pyarrow", "sklearn", "lightgbm", "torch",
-                "torchvision", "yaml", "pyproj", "ee", "requests", "tqdm"]:
+    for mod in ["numpy", "pandas", "pyarrow", "yaml", "pyproj", "shapely", "ee", "requests", "tqdm",
+                "PIL", "torch", "torchvision", "matplotlib"]:
         try:
             __import__(mod)
             print(f"  ok   {mod}")

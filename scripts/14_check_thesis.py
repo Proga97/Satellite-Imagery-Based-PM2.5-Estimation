@@ -41,7 +41,10 @@ zt, zw = zipfile.ZipFile(TEMPLATE), zipfile.ZipFile(THESIS)
 c14 = lambda b: etree.tostring(etree.fromstring(b), method="c14n")
 for n in ["word/styles.xml", "word/settings.xml", "word/numbering.xml", "word/fontTable.xml"] + \
         [x for x in zt.namelist() if re.match(r"word/(header|footer)\d+\.xml", x)]:
-    if c14(zt.read(n)) != c14(zw.read(n)):
+    a, b = zt.read(n), zw.read(n)
+    if n == "word/settings.xml":   # the builder adds only the update-fields-on-open flag
+        b = re.sub(rb'<w:updateFields w:val="true"/>', b"", b)
+    if c14(a) != c14(b):
         bad(f"{n} differs from the template")
 print("  styles, settings, numbering, fonts, headers, footers: checked")
 
