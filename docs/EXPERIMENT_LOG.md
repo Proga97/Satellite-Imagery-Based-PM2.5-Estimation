@@ -1102,6 +1102,17 @@ Context alone explains <0.1 of the variance; image alone 0.24; both 0.39–0.43 
 The context is not a shortcut around the image. On split B the context-only station ordering
 is poor (0.27), so coordinates alone cannot be what the fused model relies on.
 
+## 3ad. Raw-target ablation (Oct 10 2026) — NOT in the thesis
+
+Member-1 recipe on split A (FiLM, all context, TTA, seed 0) with `--target raw`
+(network predicts µg/m³ directly; Huber on the raw scale) instead of ln(1+c).
+Result: R² 0.345, RMSE 9.40, MAE 4.17
+vs 0.394 / 8.9 / 3.9 for the log target. The log target stays.
+Note: a first attempt silently trained on the log target because the switch was a
+module global that spawn-context DataLoader workers do not see; now a dataset attribute.
+Also: 12_build_dataset must not rewrite model_table_l1c_scenehour_allscenes.parquet —
+its row order fixes the validation carve-out (35,898/6,684 on split A).
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names

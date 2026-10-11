@@ -75,13 +75,15 @@ EXTRA_CTX_COLS = ["blue_red", "green_red"]
 class PatchDataset(Dataset):
     def __init__(self, rows: pd.DataFrame, patch_root: Path, gain: float, train: bool,
                  band_stats: tuple | None = None, classify_threshold: float | None = None,
-                 ctx_stats: tuple | None = None, ref_mode: str | None = None):
+                 ctx_stats: tuple | None = None, ref_mode: str | None = None,
+                 target: str = "log1p"):
         self.rows = rows.reset_index(drop=True)
         self.root = patch_root
         self.gain = gain
         self.train = train
         self.band_stats = band_stats  # (mean[C], std[C]) in reflectance units, or None for RGB path
         self.classify_threshold = classify_threshold
+        self.target = target
         self.ctx_stats = ctx_stats
         self.ref_mode = ref_mode
         self._ref_cache: dict = {}
@@ -130,7 +132,7 @@ class PatchDataset(Dataset):
         else:
             # log1p target: PM spans 0-466 ug/m3; raw MSE is dominated by smoke days
             # (--target raw trains on the concentration itself, for the ablation in log §3ad)
-            y = float(max(float(r["pm25"]), 0.0)) if TARGET[0] == "raw" else float(np.log1p(max(float(r["pm25"]), 0.0)))
+            y = float(max(float(r["pm25"]), 0.0)) if self.target == "raw" else float(np.log1p(max(float(r["pm25"]), 0.0)))
         return img, torch.from_numpy(self.ctx[i]), torch.tensor(y, dtype=torch.float32)
 
 
@@ -453,7 +455,7 @@ def main() -> int:
                                   band_stats=band_stats,
                                   classify_threshold=(args.classify_threshold
                                                       if args.task == "classify" else None),
-                                  ctx_stats=ctx_stats, ref_mode=args.ref_mode)
+                                  ctx_stats=ctx_stats, ref_mode=args.ref_mode, target=args.target)
                 if train and (args.oversample_high > 1.0 or args.bucket_weights):
                     import numpy as _np
                     from torch.utils.data import WeightedRandomSampler
