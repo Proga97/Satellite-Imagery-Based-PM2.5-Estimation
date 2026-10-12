@@ -11,7 +11,7 @@ Numbers quoted below are means over folds/seeds; fold-level detail is in
 
 These replace the two questions in the approved proposal.
 
-**RQ1.** How accurately can PM2.5 be estimated from Sentinel-2 imagery at monitoring
+**RQ1.** Can PM2.5 be estimated from Sentinel-2 imagery at monitoring (reworded Oct 12 2026 from "How accurately can")
 stations never seen during training?
 
 **RQ2.** Does adding spatial, temporal and meteorological context improve estimation at

@@ -479,8 +479,161 @@ def build():
     return doc
 
 
+# ------------------------------------------------------------------ front lists
+def _tab_run(text=None, tab=False):
+    r = OxmlElement("w:r")
+    if tab:
+        r.append(OxmlElement("w:tab"))
+    else:
+        t = OxmlElement("w:t"); t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); t.text = text; r.append(t)
+    return r
+
+
+def _entry_para(ppr, text, page):
+    p = OxmlElement("w:p"); p.append(deepcopy(ppr))
+    p.append(_tab_run(text)); p.append(_tab_run(tab=True)); p.append(_tab_run(str(page)))
+    return p
+
+
+def _render_pages(docx_path):
+    """LibreOffice render -> list of per-page line lists (used only for the cached page numbers)."""
+    import subprocess, tempfile, pymupdf
+    outdir = Path(tempfile.mkdtemp(prefix="thesis_prefill_"))
+    subprocess.run(["/Applications/LibreOffice.app/Contents/MacOS/soffice", "--headless", "--convert-to", "pdf",
+                    "--outdir", str(outdir), str(docx_path)], capture_output=True, timeout=600)
+    pdf = pymupdf.open(str(outdir / (docx_path.stem + ".pdf")))
+    return [[l.strip() for l in pg.get_text().split("\n") if l.strip() and not l.strip().isdigit()] for pg in pdf]
+
+
+def _norm(t):
+    return re.sub(r"\s+", " ", t).strip().lower()
+
+
+def fill_front_lists(docx_path, pages=None):
+    """Write the contents, list of tables and list of figures into the cached field results so
+    they show in any viewer; Word regenerates them on open (updateFields) with exact pages."""
+    doc = Document(str(docx_path)); body = doc.element.body
+    paras = list(body.iter(qn("w:p")))
+    def ptext(p): return "".join(t.text or "" for t in p.iter(qn("w:t")))
+    def pstyle(p):
+        ps = p.find(qn("w:pPr") + "/" + qn("w:pStyle")); return ps.get(qn("w:val")) if ps is not None else ""
+    # --- entries in document order: (level, text) for the contents; captions for the lists
+    entries, tables, figures = [], [], []
+    majors_on = False; chno = 0; h2 = 0; h3 = 0
+    for p in paras:
+        st, tx = pstyle(p), ptext(p).strip()
+        if st == "MajorHeading":
+            if tx == "ACKNOWLEDGMENTS": majors_on = True
+            if majors_on and tx: entries.append((1, tx, tx))
+        elif st == "Heading1":
+            chno += 1; h2 = 0; entries.append((1, f"{chno}. {tx}", f"{chno}. {tx}"))
+        elif st == "Heading2":
+            h2 += 1; h3 = 0; entries.append((2, f"{chno}.{h2} {tx}", f"{chno}.{h2} {tx}"))
+        elif st == "Heading3":
+            h3 += 1; entries.append((3, f"{chno}.{h2}.{h3} {tx}", f"{chno}.{h2}.{h3} {tx}"))
+        elif st == "CaptionTable":
+            tables.append(tx)
+        elif st == "CaptionFigure":
+            figures.append(tx)
+    # --- page numbers from a render
+    pages = pages or _render_pages(docx_path)
+    def find_page(needle, first_line=False, start=0):
+        n = _norm(needle)[:60]
+        for i in range(start, len(pages)):
+            lines = pages[i]
+            if first_line:
+                if lines and _norm(lines[0]).startswith(n[:40]): return i + 1
+            else:
+                joined = _norm(" ".join(lines))
+                if n in joined: return i + 1
+        return None
+    body_start = next((i for i, lines in enumerate(pages) if lines and _norm(lines[0]).startswith("1. ")), 0)
+    toc_rows = []; cursor = 0
+    for level, text, search in entries:
+        if level == 1:   # major headings and chapters start a page; the front lists quote them, so never search those
+            pg = find_page(search, first_line=True) or find_page(search, start=max(cursor, body_start)) or (toc_rows[-1][2] if toc_rows else 1)
+        else:            # subheadings: search from the current chapter's page onward
+            pg = find_page(search, start=max(cursor, body_start)) or (toc_rows[-1][2] if toc_rows else 1)
+        cursor = max(cursor, pg - 1)
+        toc_rows.append((level, text, pg))
+    def cap_pages(caps):
+        out = []; cur = body_start   # captions are also listed in the front matter; search the body only
+        for c in caps:
+            body_txt = re.sub(r"^(Table|Figure) [\d.]+\s*", "", c)   # LibreOffice renders the number differently; match the text
+            pg = find_page(body_txt[:50], start=cur) or (out[-1][1] if out else 1); cur = max(cur, pg - 1); out.append((c, pg))
+        return out
+    tab_rows, fig_rows = cap_pages(tables), cap_pages(figures)
+    # --- contents: replace the cached TOC paragraphs
+    toc_paras = [p for p in paras if pstyle(p).startswith("TOC")]
+    first = toc_paras[0]
+    assert any("TOC \\o" in (t.text or "") for t in first.iter(qn("w:instrText")))
+    pprs = {}
+    for p in toc_paras:
+        pprs.setdefault(pstyle(p), deepcopy(p.find(qn("w:pPr"))))
+    for lvl in (2, 3):
+        pprs.setdefault(f"TOC{lvl}", deepcopy(pprs["TOC1"]))
+        ps = pprs[f"TOC{lvl}"].find(qn("w:pStyle")); ps.set(qn("w:val"), f"TOC{lvl}")
+    # keep the field start of the first paragraph (begin, instr, separate), drop its cached content
+    keep = []
+    for child in list(first):
+        keep.append(child)
+        if child.tag == qn("w:r") and child.find(qn("w:fldChar")) is not None and child.find(qn("w:fldChar")).get(qn("w:fldCharType")) == "separate":
+            break
+    for child in list(first):
+        first.remove(child)
+    for child in keep: first.append(child)
+    lvl, text, pg = toc_rows[0]
+    first.append(_tab_run(text)); first.append(_tab_run(tab=True)); first.append(_tab_run(str(pg)))
+    anchor = first
+    for p in toc_paras[1:]:
+        p.getparent().remove(p)
+    for lvl, text, pg in toc_rows[1:]:
+        e = _entry_para(pprs[f"TOC{min(lvl, 3)}"], text, pg); anchor.addnext(e); anchor = e
+    # --- list of tables: the TableofFigures paragraph that holds the cached result and the field end
+    lot = next(p for p in body.iter(qn("w:p")) if pstyle(p) == "TableofFigures")
+    lot_ppr = deepcopy(lot.find(qn("w:pPr")))
+    end_run = next(r for r in lot.iter(qn("w:r")) if r.find(qn("w:fldChar")) is not None)
+    for child in list(lot):
+        lot.remove(child)
+    lot.append(deepcopy(lot_ppr))
+    c, pg = tab_rows[0]; lot.append(_tab_run(c)); lot.append(_tab_run(tab=True)); lot.append(_tab_run(str(pg)))
+    anchor = lot
+    for c, pg in tab_rows[1:]:
+        e = _entry_para(lot_ppr, c, pg); anchor.addnext(e); anchor = e
+    anchor.append(end_run)
+    # --- list of figures: the fldSimple paragraph
+    lof = next(p for p in body.iter(qn("w:p")) if p.find(qn("w:fldSimple")) is not None and "Figure" in p.find(qn("w:fldSimple")).get(qn("w:instr"), ""))
+    instr = lof.find(qn("w:fldSimple")).get(qn("w:instr"))
+    for child in list(lof):
+        lof.remove(child)
+    lof.append(deepcopy(lot_ppr))
+    def fld_run(kind, text=None):
+        r = OxmlElement("w:r")
+        if kind == "instr":
+            t = OxmlElement("w:instrText"); t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); t.text = text; r.append(t)
+        else:
+            fc = OxmlElement("w:fldChar"); fc.set(qn("w:fldCharType"), kind); r.append(fc)
+        return r
+    lof.append(fld_run("begin")); lof.append(fld_run("instr", instr)); lof.append(fld_run("separate"))
+    c, pg = fig_rows[0]; lof.append(_tab_run(c)); lof.append(_tab_run(tab=True)); lof.append(_tab_run(str(pg)))
+    anchor = lof
+    for c, pg in fig_rows[1:]:
+        e = _entry_para(lot_ppr, c, pg); anchor.addnext(e); anchor = e
+    anchor.append(fld_run("end"))
+    doc.save(str(docx_path))
+    return len(toc_rows), len(tab_rows), len(fig_rows)
+
+
 if __name__ == "__main__":
     build()
+    # two passes: the filled lists change the pagination, so fill, render the filled document,
+    # rebuild and fill again with the page numbers of the filled render
+    fill_front_lists(OUT)
+    pages = _render_pages(OUT)
+    NUM.cites.clear(); NUM.labels.clear(); _pic_id[0] = 1000
+    build()
+    n_toc, n_tab, n_fig = fill_front_lists(OUT, pages)
+    print(f"  contents: {n_toc} entries; list of tables: {n_tab}; list of figures: {n_fig} (cached; Word refreshes on open)")
     unused = sorted(set(REFS) - set(NUM.cites))
     print(f"built {OUT.relative_to(ROOT)}: {len(C.CHAPTERS)} chapters, "
           f"{sum(1 for k in NUM.labels if k[0] == 'fig')} figures, "
