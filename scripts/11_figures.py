@@ -387,7 +387,7 @@ def _roc(y, s):
 
 
 def fig17():  # flag rate by measured air quality category (replaces the ROC curve in the thesis)
-    bands = [(0, 12, "0–12\nGood"), (12, 35, "12–35\nModerate"), (35, 55, "35–55\nUnhealthy for\nsensitive groups"),
+    bands = [(0, 9, "0–9\nGood"), (9, 35, "9–35\nModerate"), (35, 55, "35–55\nUnhealthy for\nsensitive groups"),
              (55, 125, "55–125\nUnhealthy"), (125, 1e9, "above 125\nVery unhealthy\nor hazardous")]
     fig, ax = plt.subplots(figsize=(8.5, 4.4)); w = 0.38; x = np.arange(len(bands))
     for i, (runs, sp, col) in enumerate([(SPLIT_A, "Split A", LTBLUE), (SPLIT_B, "Split B", BLUE)]):

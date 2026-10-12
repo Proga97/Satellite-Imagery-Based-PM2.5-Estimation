@@ -1113,6 +1113,32 @@ module global that spawn-context DataLoader workers do not see; now a dataset at
 Also: 12_build_dataset must not rewrite model_table_l1c_scenehour_allscenes.parquet —
 its row order fixes the validation carve-out (35,898/6,684 on split A).
 
+## 3ae. Committee-style checks (Oct 12 2026): label-blind test, monitor interpolation baseline, CIs, proximity
+
+**Label-blind re-scoring** (`scripts/17_rescore_label_blind.py`): the five members scored on the
+test-station scenes removed by the two label-dependent rules (cloud_low_label, pm_below_2.5):
+A: 2,072 scenes added → R² 0.437, MAE 3.91, AUC 0.950, precision 0.61, recall 0.41, FP 36→41.
+B: 2,315 added → R² 0.439, MAE 4.09, AUC 0.930, precision 0.59, recall 0.50, FP 65→66.
+Headline numbers do not depend on label-based filtering of the test set.
+
+**Interpolation-from-monitors baseline**: IDW (1/d², ≤150 km) of training-station labels measured
+the same day (same swath → same hour) at each test scene. Coverage 94% (A) / 89% (B).
+By distance to nearest same-day monitor, IDW R² vs model R²:
+A: <10 km 0.76/0.40 (n1865); 10–25 0.73/0.48 (1796); 25–50 0.62/0.41 (2045); 50–150 0.42/0.47 (3432); all 0.62/0.43.
+B: <10 km 0.69/0.38 (1907); 10–25 0.66/0.45 (2497); 25–50 −0.13/0.30 (1757); 50–150 0.26/0.38 (3087); all 0.45/0.39.
+Interpolation wins within 25 km; model wins beyond 50 km on both splits. Added to thesis Ch4 (Table 4.6).
+
+**Station-bootstrap 95% CIs** (1000 resamples of test stations): A: R² 0.39–0.50, r 0.63–0.71,
+MAE 3.54–4.07; B: R² 0.34–0.53, r 0.59–0.73, MAE 3.64–4.37. Station-average R²: A 0.50 [0.04, 0.74],
+B 0.36 [−0.20, 0.64]. Splits share 8 of 36 test stations.
+
+**Proximity**: nearest training station to a test station: median 38 km (A) / 32 km (B); within
+10 km: 7 / 5 of 36; within 2.24 km: 0 / 1. Instruments at the 198 stations with 2023–24 hourly
+data: 151 BAM-1020/1022, 46 T640/T640X, 1 TEOM; label = lowest POC. Robust (MAD) noise:
+0.42 / 0.73 / 0.94 / 0.94 µg/m³ by level vs sd-based 1.29 / 1.56 / 2.20 / 3.74.
+Raw-target run (3ad) underestimates >55 by −63.0 vs −63.6 for the log target: the log target is
+not the cause of the high-end underestimate.
+
 ## 3n. Housekeeping
 - All 14 model weight files (555 MB) backed up to OneDrive
   (~/Library/CloudStorage/OneDrive-purdue.edu/Thesis/model_backups/, names
