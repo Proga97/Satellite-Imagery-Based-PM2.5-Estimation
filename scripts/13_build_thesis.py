@@ -589,6 +589,19 @@ def fill_front_lists(docx_path, pages=None):
         p.getparent().remove(p)
     for lvl, text, pg in toc_rows[1:]:
         e = _entry_para(pprs[f"TOC{min(lvl, 3)}"], text, pg); anchor.addnext(e); anchor = e
+    # --- the template's LIST OF TABLES heading carries an extra, empty "TOC \c Table" field before the
+    #     real one; Word fills both on update and shows the list twice, so drop the empty one
+    lot_heading = next(p for p in body.iter(qn("w:p")) if pstyle(p) == "MajorHeading" and ptext(p).strip() == "LIST OF TABLES")
+    runs = [r for r in lot_heading if r.tag == qn("w:r") and r.find(qn("w:fldChar")) is not None or r.tag == qn("w:r") and r.find(qn("w:instrText")) is not None]
+    group = []
+    for r in runs:
+        group.append(r)
+        fc = r.find(qn("w:fldChar"))
+        if fc is not None and fc.get(qn("w:fldCharType")) == "end":
+            break
+    if len(group) == 4 and group[-1].find(qn("w:fldChar")).get(qn("w:fldCharType")) == "end":
+        for r in group:
+            lot_heading.remove(r)
     # --- list of tables: the TableofFigures paragraph that holds the cached result and the field end
     lot = next(p for p in body.iter(qn("w:p")) if pstyle(p) == "TableofFigures")
     lot_ppr = deepcopy(lot.find(qn("w:pPr")))
