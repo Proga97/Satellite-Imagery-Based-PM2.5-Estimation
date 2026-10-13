@@ -492,10 +492,41 @@ def _tab_run(text=None, tab=False):
     return r
 
 
-def _entry_para(ppr, text, page):
-    p = OxmlElement("w:p"); p.append(deepcopy(ppr))
-    p.append(_tab_run(text)); p.append(_tab_run(tab=True)); p.append(_tab_run(str(page)))
+def _hidden_run(child=None, text=None):
+    r = OxmlElement("w:r"); rpr = OxmlElement("w:rPr"); rpr.append(OxmlElement("w:webHidden")); r.append(rpr)
+    if child is not None:
+        r.append(child)
+    if text is not None:
+        t = OxmlElement("w:t"); t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); t.text = text; r.append(t)
+    return r
+
+
+def _entry_link(text, page, anchor):
+    """One contents/list entry exactly as Word writes it: hyperlink to the heading's bookmark,
+    the text, a tab, and a PAGEREF field whose cached result is the page number."""
+    h = OxmlElement("w:hyperlink"); h.set(qn("w:anchor"), anchor); h.set(qn("w:history"), "1")
+    r = OxmlElement("w:r"); rpr = OxmlElement("w:rPr"); rs = OxmlElement("w:rStyle"); rs.set(qn("w:val"), "Hyperlink"); rpr.append(rs); r.append(rpr)
+    t = OxmlElement("w:t"); t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); t.text = text; r.append(t); h.append(r)
+    h.append(_hidden_run(OxmlElement("w:tab")))
+    fc = OxmlElement("w:fldChar"); fc.set(qn("w:fldCharType"), "begin"); h.append(_hidden_run(fc))
+    it = OxmlElement("w:instrText"); it.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); it.text = f" PAGEREF {anchor} \\h "; h.append(_hidden_run(it))
+    h.append(_hidden_run())   # Word writes an empty run here; kept so the markup matches the template exactly
+    fc = OxmlElement("w:fldChar"); fc.set(qn("w:fldCharType"), "separate"); h.append(_hidden_run(fc))
+    h.append(_hidden_run(text=str(page)))
+    fc = OxmlElement("w:fldChar"); fc.set(qn("w:fldCharType"), "end"); h.append(_hidden_run(fc))
+    return h
+
+
+def _entry_para(ppr, text, page, anchor):
+    p = OxmlElement("w:p"); p.append(deepcopy(ppr)); p.append(_entry_link(text, page, anchor))
     return p
+
+
+def _bookmark(par, bid, name):
+    """Bookmark the whole paragraph, as Word does for headings listed in a contents table."""
+    bs = OxmlElement("w:bookmarkStart"); bs.set(qn("w:id"), str(bid)); bs.set(qn("w:name"), name)
+    be = OxmlElement("w:bookmarkEnd"); be.set(qn("w:id"), str(bid))
+    ppr = par.find(qn("w:pPr")); par.insert(1 if ppr is not None else 0, bs); par.append(be)
 
 
 def _render_pages(docx_path):
@@ -527,17 +558,17 @@ def fill_front_lists(docx_path, pages=None):
         st, tx = pstyle(p), ptext(p).strip()
         if st == "MajorHeading":
             if tx == "ACKNOWLEDGMENTS": majors_on = True
-            if majors_on and tx: entries.append((1, tx, tx))
+            if majors_on and tx: entries.append((1, tx, tx, p))
         elif st == "Heading1":
-            chno += 1; h2 = 0; entries.append((1, f"{chno}. {tx}", f"{chno}. {tx}"))
+            chno += 1; h2 = 0; entries.append((1, f"{chno}. {tx}", f"{chno}. {tx}", p))
         elif st == "Heading2":
-            h2 += 1; h3 = 0; entries.append((2, f"{chno}.{h2} {tx}", f"{chno}.{h2} {tx}"))
+            h2 += 1; h3 = 0; entries.append((2, f"{chno}.{h2} {tx}", f"{chno}.{h2} {tx}", p))
         elif st == "Heading3":
-            h3 += 1; entries.append((3, f"{chno}.{h2}.{h3} {tx}", f"{chno}.{h2}.{h3} {tx}"))
+            h3 += 1; entries.append((3, f"{chno}.{h2}.{h3} {tx}", f"{chno}.{h2}.{h3} {tx}", p))
         elif st == "CaptionTable":
-            tables.append(tx)
+            tables.append((tx, p))
         elif st == "CaptionFigure":
-            figures.append(tx)
+            figures.append((tx, p))
     # --- page numbers from a render
     pages = pages or _render_pages(docx_path)
     def find_page(needle, first_line=False, start=0):
@@ -552,20 +583,23 @@ def fill_front_lists(docx_path, pages=None):
         return None
     body_start = next((i for i, lines in enumerate(pages) if lines and _norm(lines[0]).startswith("1. ")), 0)
     toc_rows = []; cursor = 0
-    for level, text, search in entries:
+    for level, text, search, par in entries:
         if level == 1:   # major headings and chapters start a page; the front lists quote them, so never search those
             pg = find_page(search, first_line=True) or find_page(search, start=max(cursor, body_start)) or (toc_rows[-1][2] if toc_rows else 1)
         else:            # subheadings: search from the current chapter's page onward
             pg = find_page(search, start=max(cursor, body_start)) or (toc_rows[-1][2] if toc_rows else 1)
         cursor = max(cursor, pg - 1)
-        toc_rows.append((level, text, pg))
+        toc_rows.append((level, text, pg, par))
     def cap_pages(caps):
         out = []; cur = body_start   # captions are also listed in the front matter; search the body only
-        for c in caps:
+        for c, par in caps:
             body_txt = re.sub(r"^(Table|Figure) [\d.]+\s*", "", c)   # LibreOffice renders the number differently; match the text
-            pg = find_page(body_txt[:50], start=cur) or (out[-1][1] if out else 1); cur = max(cur, pg - 1); out.append((c, pg))
+            pg = find_page(body_txt[:50], start=cur) or (out[-1][1] if out else 1); cur = max(cur, pg - 1); out.append((c, pg, par))
         return out
     tab_rows, fig_rows = cap_pages(tables), cap_pages(figures)
+    anchors = {}
+    for k, row in enumerate([r[3] for r in toc_rows] + [r[2] for r in tab_rows] + [r[2] for r in fig_rows]):
+        name = f"_Toc9{k:08d}"; _bookmark(row, 9000 + k, name); anchors[id(row)] = name
     # --- contents: replace the cached TOC paragraphs
     toc_paras = [p for p in paras if pstyle(p).startswith("TOC")]
     first = toc_paras[0]
@@ -585,13 +619,13 @@ def fill_front_lists(docx_path, pages=None):
     for child in list(first):
         first.remove(child)
     for child in keep: first.append(child)
-    lvl, text, pg = toc_rows[0]
-    first.append(_tab_run(text)); first.append(_tab_run(tab=True)); first.append(_tab_run(str(pg)))
+    lvl, text, pg, par = toc_rows[0]
+    first.append(_entry_link(text, pg, anchors[id(par)]))
     anchor = first
     for p in toc_paras[1:]:
         p.getparent().remove(p)
-    for lvl, text, pg in toc_rows[1:]:
-        e = _entry_para(pprs[f"TOC{min(lvl, 3)}"], text, pg); anchor.addnext(e); anchor = e
+    for lvl, text, pg, par in toc_rows[1:]:
+        e = _entry_para(pprs[f"TOC{min(lvl, 3)}"], text, pg, anchors[id(par)]); anchor.addnext(e); anchor = e
     # --- the template's LIST OF TABLES heading carries an extra, empty "TOC \c Table" field before the
     #     real one; Word fills both on update and shows the list twice, so drop the empty one
     lot_heading = next(p for p in body.iter(qn("w:p")) if pstyle(p) == "MajorHeading" and ptext(p).strip() == "LIST OF TABLES")
@@ -612,10 +646,10 @@ def fill_front_lists(docx_path, pages=None):
     for child in list(lot):
         lot.remove(child)
     lot.append(deepcopy(lot_ppr))
-    c, pg = tab_rows[0]; lot.append(_tab_run(c)); lot.append(_tab_run(tab=True)); lot.append(_tab_run(str(pg)))
+    c, pg, par = tab_rows[0]; lot.append(_entry_link(c, pg, anchors[id(par)]))
     anchor = lot
-    for c, pg in tab_rows[1:]:
-        e = _entry_para(lot_ppr, c, pg); anchor.addnext(e); anchor = e
+    for c, pg, par in tab_rows[1:]:
+        e = _entry_para(lot_ppr, c, pg, anchors[id(par)]); anchor.addnext(e); anchor = e
     anchor.append(end_run)
     # --- list of figures: the fldSimple paragraph
     lof = next(p for p in body.iter(qn("w:p")) if p.find(qn("w:fldSimple")) is not None and "Figure" in p.find(qn("w:fldSimple")).get(qn("w:instr"), ""))
@@ -631,10 +665,10 @@ def fill_front_lists(docx_path, pages=None):
             fc = OxmlElement("w:fldChar"); fc.set(qn("w:fldCharType"), kind); r.append(fc)
         return r
     lof.append(fld_run("begin")); lof.append(fld_run("instr", instr)); lof.append(fld_run("separate"))
-    c, pg = fig_rows[0]; lof.append(_tab_run(c)); lof.append(_tab_run(tab=True)); lof.append(_tab_run(str(pg)))
+    c, pg, par = fig_rows[0]; lof.append(_entry_link(c, pg, anchors[id(par)]))
     anchor = lof
-    for c, pg in fig_rows[1:]:
-        e = _entry_para(lot_ppr, c, pg); anchor.addnext(e); anchor = e
+    for c, pg, par in fig_rows[1:]:
+        e = _entry_para(lot_ppr, c, pg, anchors[id(par)]); anchor.addnext(e); anchor = e
     anchor.append(fld_run("end"))
     doc.save(str(docx_path))
     return len(toc_rows), len(tab_rows), len(fig_rows)
