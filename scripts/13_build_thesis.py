@@ -472,12 +472,8 @@ def build():
 
     doc.core_properties.author = F["author"]
     doc.core_properties.title = F["title_case"]
-    # ask Word to recalculate every field (contents, lists, captions, cross-references) on open;
-    # the template's cached placeholders are otherwise shown until the user presses F9
-    settings = doc.settings.element
-    if settings.find(qn("w:updateFields")) is None:
-        uf = OxmlElement("w:updateFields"); uf.set(qn("w:val"), "true")
-        settings.insert(0, uf)
+    # no update-fields-on-open flag: Word for Mac evaluated the lists before pagination and showed
+    # every page as 1; the user updates the three lists once by right-click > Update Field instead
     doc.save(str(OUT))
     return doc
 
