@@ -306,15 +306,14 @@ def fig12():
 
 def fig13():  # §2 ladder rows 1-10
     fig, ax = plt.subplots(figsize=(7, 3.8))
-    levers = [("proposed design:\nmedian composites,\nfrozen network", 0.00),
-              ("single scenes,\nlabel at the\noverpass hour", 0.17),
+    levers = [("single scenes, label at the\noverpass hour, frozen network", 0.17),
               ("network fine-tuned\nend to end", 0.36), ("longer training with\nearly stopping", 0.39)]
     v = [x for _, x in levers]
-    ax.bar(range(4), v, color=[GRAY, LTBLUE, LTBLUE, BLUE], width=0.6)
+    ax.bar(range(3), v, color=[LTBLUE, LTBLUE, BLUE], width=0.55)
     for i, x in enumerate(v):
         ax.text(i, x + 0.008, f"{x:.2f}", ha="center", fontweight="bold", fontsize=9)
-    ax.set_xticks(range(4)); ax.set_xticklabels([n for n, _ in levers], fontsize=8)
-    ax.set_title("Changes from the proposed design to the image model (California)", fontsize=9.5)
+    ax.set_xticks(range(3)); ax.set_xticklabels([n for n, _ in levers], fontsize=8.5)
+    ax.set_title("Image model at each step of its development (California)", fontsize=9.5)
     ax.set_ylabel("held-out-station R²")
     save(fig, "fig13_dead_matrix_levers.png")
 
