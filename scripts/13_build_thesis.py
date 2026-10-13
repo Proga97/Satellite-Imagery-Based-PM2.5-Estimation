@@ -276,8 +276,11 @@ def equation(parts, label, tabs):
     return p
 
 
-def reference_para(doc, text, url):
+def reference_para(doc, text, url, num_id=None):
     p = para("References", ind=dict(left=576, hanging=576))
+    if num_id is not None:   # the template's num 36 restarts the References numbering at 1 (used for PUBLICATION)
+        npr = OxmlElement("w:numPr"); ilvl = OxmlElement("w:ilvl"); ilvl.set(qn("w:val"), "0"); nid = OxmlElement("w:numId"); nid.set(qn("w:val"), str(num_id))
+        npr.append(ilvl); npr.append(nid); p.find(qn("w:pPr")).insert(1, npr)
     p.append(mk_run(text + " "))
     h = OxmlElement("w:hyperlink")
     h.set(qn("r:id"), doc.part.relate_to(url, RT.HYPERLINK, is_external=True))
@@ -459,7 +462,7 @@ def build():
         set_text(pub, "PUBLICATION" if len(C.PUBLICATIONS) == 1 else "PUBLICATIONS")
         anchor = pub
         for text, url in C.PUBLICATIONS:
-            new = reference_para(doc, text, url)   # same style as references, as in the template
+            new = reference_para(doc, text, url, num_id=36)   # same style as references, numbered from 1
             anchor.addnext(new); anchor = new
     else:
         prev = els[i - 1]
