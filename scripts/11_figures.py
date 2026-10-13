@@ -910,7 +910,7 @@ def fig41():  # clean-range floor
             if len(d) >= 10: mids.append(d.y_true.mean()); means.append(d.y_pred.mean())
         ax.plot(mids, means, "o-", color=RED, ms=4, lw=1.5, label="mean prediction per band of measured values")
         ax.plot([0, 35], [0, 35], "k--", lw=0.8, label="perfect prediction"); ax.set_xlim(0, 35); ax.set_ylim(0, 40)
-        ax.set_title(f"{sp}, scenes ≤35 µg/m³: {wic}", fontsize=9.5)
+        ax.set_title(f"{sp}: {wic}", fontsize=9.5)
         ax.set_xlabel("measured (µg/m³)")
     axes[0].set_ylabel("predicted (µg/m³)"); axes[0].legend(loc="upper left", fontsize=7.5, frameon=False)
     fig.colorbar(hb, ax=axes, label="scenes per cell", shrink=0.8)
