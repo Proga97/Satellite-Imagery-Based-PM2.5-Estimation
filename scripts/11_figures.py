@@ -903,13 +903,19 @@ def fig41():  # clean-range floor
         b = blend(runs); c = b[b.y_true <= 35]
         cc = c.assign(t=c.y_true - c.groupby("station_id").y_true.transform("mean"), p=c.y_pred - c.groupby("station_id").y_pred.transform("mean"))
         wic = f"correlation {np.corrcoef(cc.t, cc.p)[0, 1]:.2f}, error {np.sqrt(((cc.p - cc.t) ** 2).mean()):.1f} µg/m³"
-        ax.scatter(c.y_true, c.y_pred, s=4, alpha=0.15, color=BLUE, edgecolors="none")
-        ax.plot([2, 35], [2, 35], "k--", lw=0.8); ax.set_xlim(2, 35); ax.set_ylim(0, 40)
+        hb = ax.hexbin(c.y_true, c.y_pred, gridsize=40, extent=(0, 35, 0, 40), cmap="Blues", mincnt=1, bins="log", linewidths=0.2)
+        edges = np.arange(0, 37.5, 2.5); mids, means = [], []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            d = c[(c.y_true >= lo) & (c.y_true < hi)]
+            if len(d) >= 10: mids.append(d.y_true.mean()); means.append(d.y_pred.mean())
+        ax.plot(mids, means, "o-", color=RED, ms=4, lw=1.5, label="mean prediction per band of measured values")
+        ax.plot([0, 35], [0, 35], "k--", lw=0.8, label="perfect prediction"); ax.set_xlim(0, 35); ax.set_ylim(0, 40)
         ax.set_title(f"{sp}, scenes ≤35 µg/m³: {wic}", fontsize=9.5)
-        ax.set_xlabel("true (µg/m³)")
-    axes[0].set_ylabel("predicted (µg/m³)")
+        ax.set_xlabel("measured (µg/m³)")
+    axes[0].set_ylabel("predicted (µg/m³)"); axes[0].legend(loc="upper left", fontsize=7.5, frameon=False)
+    fig.colorbar(hb, ax=axes, label="scenes per cell", shrink=0.8)
     fig.suptitle("Predictions against measurements for scenes at or below 35 µg/m³", y=1.02)
-    save(fig, "fig41_clean_range_floor.png")
+    fig.savefig(FIG / "fig41_clean_range_floor.png", bbox_inches="tight"); plt.close(fig)
 
 
 
