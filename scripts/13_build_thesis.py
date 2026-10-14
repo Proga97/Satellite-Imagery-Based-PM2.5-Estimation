@@ -638,6 +638,11 @@ def fill_front_lists(docx_path, pages=None):
     # --- list of tables: the TableofFigures paragraph that holds the cached result and the field end
     lot = next(p for p in body.iter(qn("w:p")) if pstyle(p) == "TableofFigures")
     lot_ppr = deepcopy(lot.find(qn("w:pPr")))
+    # the template's placeholder paragraph overrides the style (no space after, keepLines off); Word's own
+    # regenerated entries use the style as it is, so write the entries the same way: style + the tab stop only
+    for tag in ("w:keepLines", "w:spacing"):
+        el = lot_ppr.find(qn(tag))
+        if el is not None: lot_ppr.remove(el)
     end_run = next(r for r in lot.iter(qn("w:r")) if r.find(qn("w:fldChar")) is not None)
     for child in list(lot):
         lot.remove(child)
